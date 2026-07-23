@@ -1,0 +1,290 @@
+---
+- name: Create and verify DEV and TEST libraries for z/OS users
+  hosts: zos
+  gather_facts: false
+
+  environment: "{{ environment_vars }}"
+
+  collections:
+    - ibm.ibm_zos_core
+
+  vars:
+    user_hlqs:
+      - USER01
+      - USER02
+      - USER03
+
+    environments:
+      - DEV
+      - TEST
+
+    # Produces:
+    # USER01.DEV.JCL
+    # USER01.TEST.JCL
+    # USER02.DEV.JCL
+    # USER02.TEST.JCL
+    # USER03.DEV.JCL
+    # USER03.TEST.JCL
+    libraries: "{{ user_hlqs | product(environments) | list }}"
+
+  pre_tasks:
+    ####################################################################
+    # Input validation
+    ####################################################################
+
+    - name: Validate library provisioning variables
+      ansible.builtin.assert:
+        that:
+          - user_hlqs is defined
+          - user_hlqs | length > 0
+          - environments is defined
+          - environments | length > 0
+          - libraries is defined
+          - libraries | length > 0
+          - environment_vars is defined
+        fail_msg: >-
+          Required library provisioning variables are missing.
+          Confirm user_hlqs, environments, libraries, and environment_vars
+          are defined.
+        success_msg: "Library provisioning variables are valid."
+
+    ####################################################################
+    # Initialize metrics with failure/default values
+    ####################################################################
+
+    - name: Initialize library provisioning Prometheus metrics
+      ansible.builtin.copy:
+        dest: "{{ playbook_dir }}/job_metrics.prom"
+        mode: "0644"
+        content: |
+          # HELP zos_library_playbook_success Whether library provisioning and verification succeeded
+          # TYPE zos_library_playbook_success gauge
+          zos_library_playbook_success 0
+
+          # HELP zos_libraries_expected Total number of z/OS libraries expected
+          # TYPE zos_libraries_expected gauge
+          zos_libraries_expected {{ libraries | length }}
+
+          # HELP zos_libraries_verified Total number of z/OS libraries successfully verified
+          # TYPE zos_libraries_verified gauge
+          zos_libraries_verified 0
+
+          # HELP zos_dev_libraries_verified Number of DEV libraries successfully verified
+          # TYPE zos_dev_libraries_verified gauge
+          zos_dev_libraries_verified 0
+
+          # HELP zos_test_libraries_verified Number of TEST libraries successfully verified
+          # TYPE zos_test_libraries_verified gauge
+          zos_test_libraries_verified 0
+
+          # HELP zos_libraries_changed Number of libraries created or changed during this run
+          # TYPE zos_libraries_changed gauge
+          zos_libraries_changed 0
+      delegate_to: localhost
+      run_once: true
+
+  tasks:
+    ####################################################################
+    # Create DEV and TEST libraries
+    ####################################################################
+
+    - name: Create DEV and TEST JCL libraries
+      ibm.ibm_zos_core.zos_data_set:
+        name: "{{ item.0 }}.{{ item.1 }}.JCL"
+        type: pdse
+        state: present
+        space_primary: 5
+        space_secondary: 2
+        space_type: trk
+        record_format: fb
+        record_length: 80
+        block_size: 0
+        replace: false
+      loop: "{{ libraries }}"
+      loop_control:
+        label: "{{ item.0 }}.{{ item.1 }}.JCL"
+      register: library_results
+      tags:
+        - create_libraries
+
+    - name: Display DEV and TEST library provisioning results
+      ansible.builtin.debug:
+        msg:
+          - "Library: {{ item.item.0 }}.{{ item.item.1 }}.JCL"
+          - "Changed: {{ item.changed | default(false) }}"
+          - "Failed: {{ item.failed | default(false) }}"
+      loop: "{{ library_results.results }}"
+      loop_control:
+        label: "{{ item.item.0 }}.{{ item.item.1 }}.JCL"
+      tags:
+        - create_libraries
+
+    - name: Count libraries changed during this run
+      ansible.builtin.set_fact:
+        zos_libraries_changed_count: >-
+          {{
+            library_results.results
+            | selectattr('changed', 'defined')
+            | selectattr('changed', 'equalto', true)
+            | list
+            | length
+          }}
+
+    ####################################################################
+    # Verify the libraries using LISTCAT
+    ####################################################################
+
+    - name: Verify DEV and TEST libraries with LISTCAT
+      ibm.ibm_zos_core.zos_tso_command:
+        commands:
+          - "LISTCAT ENTRIES('{{ item.0 }}.{{ item.1 }}.JCL')"
+        max_rc: 8
+      loop: "{{ libraries }}"
+      loop_control:
+        label: "{{ item.0 }}.{{ item.1 }}.JCL"
+      register: verify_results
+      changed_when: false
+      failed_when: false
+      throttle: 1
+      tags:
+        - verify_libraries
+
+    - name: Display LISTCAT verification output
+      ansible.builtin.debug:
+        msg:
+          - "Library: {{ item.item.0 }}.{{ item.item.1 }}.JCL"
+          - "Return code: {{ item.output[0].rc | default('unknown') }}"
+          - "Output: {{ item.output | default([]) }}"
+      loop: "{{ verify_results.results }}"
+      loop_control:
+        label: "{{ item.item.0 }}.{{ item.item.1 }}.JCL"
+      tags:
+        - verify_libraries
+
+    - name: Assert that every DEV and TEST library exists
+      ansible.builtin.assert:
+        that:
+          - item.output is defined
+          - item.output | length > 0
+          - item.output[0].rc is defined
+          - item.output[0].rc | int == 0
+        fail_msg: >-
+          Verification failed: library
+          {{ item.item.0 }}.{{ item.item.1 }}.JCL
+          was not found by LISTCAT.
+        success_msg: >-
+          Verification passed: library
+          {{ item.item.0 }}.{{ item.item.1 }}.JCL exists.
+      loop: "{{ verify_results.results }}"
+      loop_control:
+        label: "{{ item.item.0 }}.{{ item.item.1 }}.JCL"
+      tags:
+        - verify_libraries
+
+    ####################################################################
+    # Calculate successful verification totals
+    ####################################################################
+
+    - name: Calculate library verification metric totals
+      ansible.builtin.set_fact:
+        zos_libraries_verified_count: >-
+          {{
+            verify_results.results
+            | selectattr('output', 'defined')
+            | selectattr('output.0.rc', 'defined')
+            | selectattr('output.0.rc', 'equalto', 0)
+            | list
+            | length
+          }}
+
+        zos_dev_libraries_verified_count: >-
+          {{
+            verify_results.results
+            | selectattr('item.1', 'equalto', 'DEV')
+            | selectattr('output', 'defined')
+            | selectattr('output.0.rc', 'defined')
+            | selectattr('output.0.rc', 'equalto', 0)
+            | list
+            | length
+          }}
+
+        zos_test_libraries_verified_count: >-
+          {{
+            verify_results.results
+            | selectattr('item.1', 'equalto', 'TEST')
+            | selectattr('output', 'defined')
+            | selectattr('output.0.rc', 'defined')
+            | selectattr('output.0.rc', 'equalto', 0)
+            | list
+            | length
+          }}
+
+    ####################################################################
+    # Generate successful Prometheus metrics
+    ####################################################################
+
+    - name: Write successful library provisioning Prometheus metrics
+      ansible.builtin.copy:
+        dest: "{{ playbook_dir }}/job_metrics.prom"
+        mode: "0644"
+        content: |
+          # HELP zos_library_playbook_success Whether library provisioning and verification succeeded
+          # TYPE zos_library_playbook_success gauge
+          zos_library_playbook_success 1
+
+          # HELP zos_libraries_expected Total number of z/OS libraries expected
+          # TYPE zos_libraries_expected gauge
+          zos_libraries_expected {{ libraries | length }}
+
+          # HELP zos_libraries_verified Total number of z/OS libraries successfully verified
+          # TYPE zos_libraries_verified gauge
+          zos_libraries_verified {{ zos_libraries_verified_count }}
+
+          # HELP zos_dev_libraries_verified Number of DEV libraries successfully verified
+          # TYPE zos_dev_libraries_verified gauge
+          zos_dev_libraries_verified {{ zos_dev_libraries_verified_count }}
+
+          # HELP zos_test_libraries_verified Number of TEST libraries successfully verified
+          # TYPE zos_test_libraries_verified gauge
+          zos_test_libraries_verified {{ zos_test_libraries_verified_count }}
+
+          # HELP zos_libraries_changed Number of libraries created or changed during this run
+          # TYPE zos_libraries_changed gauge
+          zos_libraries_changed {{ zos_libraries_changed_count }}
+
+          # HELP zos_library_exists Whether an expected z/OS library exists
+          # TYPE zos_library_exists gauge
+          {% for result in verify_results.results %}
+          zos_library_exists{userid="{{ result.item.0 }}",environment="{{ result.item.1 }}",dataset="{{ result.item.0 }}.{{ result.item.1 }}.JCL"} {{ 1 if (result.output is defined and result.output | length > 0 and result.output[0].rc is defined and result.output[0].rc | int == 0) else 0 }}
+          {% endfor %}
+      delegate_to: localhost
+      run_once: true
+
+    - name: Read generated library Prometheus metrics
+      ansible.builtin.command:
+        cmd: cat "{{ playbook_dir }}/job_metrics.prom"
+      delegate_to: localhost
+      run_once: true
+      register: library_metrics_output
+      changed_when: false
+
+    - name: Display generated library Prometheus metrics
+      ansible.builtin.debug:
+        var: library_metrics_output.stdout_lines
+      run_once: true
+
+    ####################################################################
+    # Final summary
+    ####################################################################
+
+    - name: Display final library provisioning summary
+      ansible.builtin.debug:
+        msg:
+          - "z/OS library provisioning: PASS"
+          - "Expected libraries: {{ libraries | length }}"
+          - "Verified libraries: {{ zos_libraries_verified_count }}"
+          - "Verified DEV libraries: {{ zos_dev_libraries_verified_count }}"
+          - "Verified TEST libraries: {{ zos_test_libraries_verified_count }}"
+          - "Libraries changed during this run: {{ zos_libraries_changed_count }}"
+          - "DEV and TEST JCL library provisioning completed successfully."
+          
