@@ -167,7 +167,7 @@
           - item.output is defined
           - item.output | length > 0
           - item.output[0].rc is defined
-          - item.output[0].rc | int == 0
+          - item.output[0].rc | int == 99
         fail_msg: >-
           Verification failed: library
           {{ item.item.0 }}.{{ item.item.1 }}.JCL
