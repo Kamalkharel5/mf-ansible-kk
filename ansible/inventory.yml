@@ -1,11 +1,19 @@
+---
 all:
   children:
     zos:
       hosts:
         mainframe:
           ansible_host: 173.45.66.189
+
       vars:
         ansible_user: IBMUSER
-        ansible_ssh_private_key_file: id_rsa
-        ansible_python_interpreter: /usr/lpp/IBM/cyp/v3r11/pyz/bin/python    
-        ansible_pipelining: True
+        ansible_ssh_private_key_file: ./id_rsa
+        ansible_python_interpreter: /usr/lpp/IBM/cyp/v3r11/pyz/bin/python
+
+        # Do not pipeline Python modules through stdin on z/OS.
+        ansible_pipelining: false
+
+        # Transfer modules using legacy SCP mode.
+        ansible_ssh_transfer_method: scp
+        ansible_scp_extra_args: "-O"

@@ -1,0 +1,277 @@
+---
+- name: Create and verify RACF group and users
+  hosts: zos
+  gather_facts: false
+
+  collections:
+    - ibm.ibm_zos_core
+
+  vars:
+    racf_group: TEAM01
+    group_owner: IBMUSER
+
+    # Supply securely with Ansible Vault, GitHub Actions secrets,
+    # or -e "racf_default_password=..."
+    default_password: "{{ racf_default_password }}"
+
+    racf_users:
+      - userid: USER01
+        name: "Development User 01"
+
+      - userid: USER02
+        name: "Development User 02"
+
+      - userid: USER03
+        name: "Development User 03"
+
+  pre_tasks:
+    - name: Validate required RACF variables
+      ansible.builtin.assert:
+        that:
+          - racf_group is defined
+          - racf_group | length > 0
+          - group_owner is defined
+          - group_owner | length > 0
+          - racf_users is defined
+          - racf_users | length > 0
+          - racf_default_password is defined
+          - racf_default_password | length > 0
+        fail_msg: >-
+          Required RACF variables are missing. Supply racf_default_password
+          securely with Ansible Vault, GitHub Actions secrets, or an extra variable.
+        success_msg: "Required RACF variables are present."
+
+  tasks:
+    ####################################################################
+    # RACF group management and connection test
+    ####################################################################
+
+    - name: Check whether RACF group exists
+      ibm.ibm_zos_core.zos_tso_command:
+        commands:
+          - "LISTGRP {{ racf_group }}"
+        max_rc: 8
+      register: group_check
+      changed_when: false
+      failed_when: false
+
+    - name: Display complete LISTGRP result
+      ansible.builtin.debug:
+        var: group_check
+
+    - name: Validate that LISTGRP executed
+      ansible.builtin.assert:
+        that:
+          - group_check is defined
+          - group_check.failed is not defined or not group_check.failed
+        fail_msg: >-
+          LISTGRP did not execute successfully. Review the complete
+          group_check result displayed above.
+        success_msg: "LISTGRP task completed without an Ansible module failure."
+
+    - name: Determine whether RACF group exists
+      ansible.builtin.set_fact:
+        racf_group_exists: >-
+          {{
+            group_check.output is defined
+            and group_check.output | length > 0
+            and group_check.output[0].rc is defined
+            and group_check.output[0].rc | int == 0
+          }}
+
+    - name: Display RACF group existence result
+      ansible.builtin.debug:
+        msg: >-
+          RACF group {{ racf_group }}
+          {{ 'exists' if racf_group_exists else 'does not exist' }}.
+
+    - name: Create missing RACF group
+      ibm.ibm_zos_core.zos_tso_command:
+        commands:
+          - "ADDGROUP {{ racf_group }} OWNER({{ group_owner }})"
+        max_rc: 4
+      when: not racf_group_exists
+      register: group_create_result
+
+    - name: Display RACF group creation result
+      ansible.builtin.debug:
+        var: group_create_result
+      when: not racf_group_exists
+
+    ####################################################################
+    # RACF user management
+    ####################################################################
+
+    - name: Check whether RACF users exist
+      ibm.ibm_zos_core.zos_tso_command:
+        commands:
+          - "LISTUSER {{ item.userid }}"
+        max_rc: 8
+      loop: "{{ racf_users }}"
+      loop_control:
+        label: "{{ item.userid }}"
+      register: user_checks
+      changed_when: false
+      failed_when: false
+
+    - name: Display RACF user check results
+      ansible.builtin.debug:
+        var: user_checks
+
+    - name: Create missing RACF users
+      ibm.ibm_zos_core.zos_tso_command:
+        commands:
+          - >-
+            ADDUSER {{ item.item.userid }}
+            NAME('{{ item.item.name }}')
+            OWNER({{ racf_group }})
+            DFLTGRP({{ racf_group }})
+            PASSWORD({{ default_password }})
+        max_rc: 4
+      loop: "{{ user_checks.results }}"
+      loop_control:
+        label: "{{ item.item.userid }}"
+      when:
+        - item.output is defined
+        - item.output | length > 0
+        - item.output[0].rc is defined
+        - item.output[0].rc | int != 0
+      register: user_create_results
+      no_log: true
+
+    ####################################################################
+    # Refresh and group membership management
+    ####################################################################
+
+    - name: Refresh RACF user information
+      ibm.ibm_zos_core.zos_tso_command:
+        commands:
+          - "LISTUSER {{ item.userid }}"
+        max_rc: 8
+      loop: "{{ racf_users }}"
+      loop_control:
+        label: "{{ item.userid }}"
+      register: refreshed_user_checks
+      changed_when: false
+      failed_when: false
+
+    - name: Display refreshed RACF user results
+      ansible.builtin.debug:
+        var: refreshed_user_checks
+
+    - name: Assert that RACF users are available
+      ansible.builtin.assert:
+        that:
+          - item.output is defined
+          - item.output | length > 0
+          - item.output[0].rc is defined
+          - item.output[0].rc | int == 0
+        fail_msg: >-
+          RACF user {{ item.item.userid }} was not found after the
+          user-management step.
+        success_msg: >-
+          RACF user {{ item.item.userid }} is available.
+      loop: "{{ refreshed_user_checks.results }}"
+      loop_control:
+        label: "{{ item.item.userid }}"
+
+    - name: Connect users to RACF group when needed
+      ibm.ibm_zos_core.zos_tso_command:
+        commands:
+          - "CONNECT {{ item.item.userid }} GROUP({{ racf_group }})"
+        max_rc: 4
+      loop: "{{ refreshed_user_checks.results }}"
+      loop_control:
+        label: "Connect {{ item.item.userid }} to {{ racf_group }}"
+      when:
+        - item.output is defined
+        - item.output | length > 0
+        - item.output[0].rc is defined
+        - item.output[0].rc | int == 0
+        - racf_group not in (item.output | string)
+      register: connect_results
+
+    ####################################################################
+    # Final verification
+    ####################################################################
+
+    - name: Verify RACF group
+      ibm.ibm_zos_core.zos_tso_command:
+        commands:
+          - "LISTGRP {{ racf_group }}"
+        max_rc: 8
+      register: verify_group
+      changed_when: false
+      failed_when: false
+
+    - name: Display final RACF group result
+      ansible.builtin.debug:
+        var: verify_group
+
+    - name: Assert that RACF group exists
+      ansible.builtin.assert:
+        that:
+          - verify_group.output is defined
+          - verify_group.output | length > 0
+          - verify_group.output[0].rc is defined
+          - verify_group.output[0].rc | int == 0
+        fail_msg: >-
+          Verification failed: RACF group {{ racf_group }} does not exist.
+        success_msg: >-
+          Verification passed: RACF group {{ racf_group }} exists.
+
+    - name: Verify RACF users
+      ibm.ibm_zos_core.zos_tso_command:
+        commands:
+          - "LISTUSER {{ item.userid }}"
+        max_rc: 8
+      loop: "{{ racf_users }}"
+      loop_control:
+        label: "{{ item.userid }}"
+      register: verify_users
+      changed_when: false
+      failed_when: false
+
+    - name: Display final RACF user results
+      ansible.builtin.debug:
+        var: verify_users
+
+    - name: Assert that RACF users exist
+      ansible.builtin.assert:
+        that:
+          - item.output is defined
+          - item.output | length > 0
+          - item.output[0].rc is defined
+          - item.output[0].rc | int == 0
+        fail_msg: >-
+          Verification failed: RACF user {{ item.item.userid }} does not exist.
+        success_msg: >-
+          Verification passed: RACF user {{ item.item.userid }} exists.
+      loop: "{{ verify_users.results }}"
+      loop_control:
+        label: "{{ item.item.userid }}"
+
+    - name: Assert that users are connected to RACF group
+      ansible.builtin.assert:
+        that:
+          - racf_group in (item.output | string)
+        fail_msg: >-
+          Verification failed: RACF user {{ item.item.userid }}
+          is not connected to group {{ racf_group }}.
+        success_msg: >-
+          Verification passed: RACF user {{ item.item.userid }}
+          is connected to group {{ racf_group }}.
+      loop: "{{ verify_users.results }}"
+      loop_control:
+        label: "{{ item.item.userid }}"
+
+    - name: Display final provisioning summary
+      ansible.builtin.debug:
+        msg:
+          - "z/OS TSO command execution: PASS"
+          - "RACF group {{ racf_group }}: PASS"
+          - >-
+            RACF users:
+            {{ racf_users | map(attribute='userid') | join(', ') }}
+          - "Group memberships: PASS"
+          - "RACF group and user provisioning completed successfully."
