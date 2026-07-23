@@ -41,6 +41,33 @@
           securely with Ansible Vault, GitHub Actions secrets, or an extra variable.
         success_msg: "Required RACF variables are present."
 
+    - name: Initialize RACF Prometheus metrics
+      ansible.builtin.copy:
+        dest: "{{ playbook_dir }}/job_metrics.prom"
+        mode: "0644"
+        content: |
+          # HELP racf_group_exists Whether the expected RACF group exists
+          # TYPE racf_group_exists gauge
+          racf_group_exists{group="{{ racf_group }}"} 0
+
+          # HELP racf_users_total Total number of RACF users expected
+          # TYPE racf_users_total gauge
+          racf_users_total {{ racf_users | length }}
+
+          # HELP racf_users_verified Number of RACF users successfully verified
+          # TYPE racf_users_verified gauge
+          racf_users_verified 0
+
+          # HELP racf_group_memberships_verified Number of RACF group memberships successfully verified
+          # TYPE racf_group_memberships_verified gauge
+          racf_group_memberships_verified 0
+
+          # HELP racf_playbook_success Whether RACF provisioning and verification succeeded
+          # TYPE racf_playbook_success gauge
+          racf_playbook_success 0
+      delegate_to: localhost
+      run_once: true
+
   tasks:
     ####################################################################
     # RACF group management and connection test
@@ -63,40 +90,37 @@
       ansible.builtin.assert:
         that:
           - group_check is defined
-          - group_check.failed is not defined or not group_check.failed
+          - group_check.rc | default(0) | int == 0
+          - group_check.output is defined
+          - group_check.output | length > 0
+          - group_check.output[0].rc is defined
         fail_msg: >-
-          LISTGRP did not execute successfully. Review the complete
-          group_check result displayed above.
-        success_msg: "LISTGRP task completed without an Ansible module failure."
+          LISTGRP did not execute successfully.
+          {{ group_check.module_stderr | default(group_check.msg | default('No module error details returned.')) }}
+        success_msg: "LISTGRP returned a valid TSO command response."
 
     - name: Determine whether RACF group exists
       ansible.builtin.set_fact:
-        racf_group_exists: >-
-          {{
-            group_check.output is defined
-            and group_check.output | length > 0
-            and group_check.output[0].rc is defined
-            and group_check.output[0].rc | int == 0
-          }}
+        racf_group_exists_fact: "{{ group_check.output[0].rc | int == 0 }}"
 
     - name: Display RACF group existence result
       ansible.builtin.debug:
         msg: >-
           RACF group {{ racf_group }}
-          {{ 'exists' if racf_group_exists else 'does not exist' }}.
+          {{ 'exists' if racf_group_exists_fact else 'does not exist' }}.
 
     - name: Create missing RACF group
       ibm.ibm_zos_core.zos_tso_command:
         commands:
           - "ADDGROUP {{ racf_group }} OWNER({{ group_owner }})"
         max_rc: 4
-      when: not racf_group_exists
+      when: not racf_group_exists_fact
       register: group_create_result
 
     - name: Display RACF group creation result
       ansible.builtin.debug:
         var: group_create_result
-      when: not racf_group_exists
+      when: not racf_group_exists_fact
 
     ####################################################################
     # RACF user management
@@ -265,6 +289,70 @@
       loop_control:
         label: "{{ item.item.userid }}"
 
+    ####################################################################
+    # Prometheus metrics
+    ####################################################################
+
+    - name: Calculate verified RACF metric totals
+      ansible.builtin.set_fact:
+        racf_users_verified_count: >-
+          {{
+            verify_users.results
+            | selectattr('output', 'defined')
+            | selectattr('output.0.rc', 'defined')
+            | selectattr('output.0.rc', 'equalto', 0)
+            | list
+            | length
+          }}
+        racf_memberships_verified_count: >-
+          {{
+            verify_users.results
+            | selectattr('output', 'defined')
+            | selectattr('output', 'search', racf_group)
+            | list
+            | length
+          }}
+
+    - name: Write successful RACF Prometheus metrics
+      ansible.builtin.copy:
+        dest: "{{ playbook_dir }}/job_metrics.prom"
+        mode: "0644"
+        content: |
+          # HELP racf_group_exists Whether the expected RACF group exists
+          # TYPE racf_group_exists gauge
+          racf_group_exists{group="{{ racf_group }}"} 1
+
+          # HELP racf_users_total Total number of RACF users expected
+          # TYPE racf_users_total gauge
+          racf_users_total {{ racf_users | length }}
+
+          # HELP racf_users_verified Number of RACF users successfully verified
+          # TYPE racf_users_verified gauge
+          racf_users_verified {{ racf_users_verified_count }}
+
+          # HELP racf_group_memberships_verified Number of RACF group memberships successfully verified
+          # TYPE racf_group_memberships_verified gauge
+          racf_group_memberships_verified {{ racf_memberships_verified_count }}
+
+          # HELP racf_playbook_success Whether RACF provisioning and verification succeeded
+          # TYPE racf_playbook_success gauge
+          racf_playbook_success 1
+      delegate_to: localhost
+      run_once: true
+
+    - name: Read generated RACF Prometheus metrics
+      ansible.builtin.command:
+        cmd: cat "{{ playbook_dir }}/job_metrics.prom"
+      delegate_to: localhost
+      run_once: true
+      register: racf_metrics_output
+      changed_when: false
+
+    - name: Display generated RACF Prometheus metrics
+      ansible.builtin.debug:
+        var: racf_metrics_output.stdout_lines
+      run_once: true
+
     - name: Display final provisioning summary
       ansible.builtin.debug:
         msg:
@@ -273,5 +361,7 @@
           - >-
             RACF users:
             {{ racf_users | map(attribute='userid') | join(', ') }}
+          - "Verified users: {{ racf_users_verified_count }}"
+          - "Verified memberships: {{ racf_memberships_verified_count }}"
           - "Group memberships: PASS"
           - "RACF group and user provisioning completed successfully."
