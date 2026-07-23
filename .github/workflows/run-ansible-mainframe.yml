@@ -35,6 +35,10 @@ jobs:
     container:
       image: innovationinsoftware/mf-ansible:1.8.0
 
+    defaults:
+      run:
+        shell: bash
+
     permissions:
       contents: read
 
@@ -67,7 +71,6 @@ jobs:
           chmod 600 id_rsa
           export ANSIBLE_HOST_KEY_CHECKING=False
 
-          # Only permit playbooks located directly in the ansible directory.
           if [[ "${PLAYBOOK_NAME}" == */* ]]; then
             echo "ERROR: PLAYBOOK_NAME must contain only a filename."
             exit 1
@@ -77,6 +80,16 @@ jobs:
             echo "ERROR: Playbook '${PLAYBOOK_NAME}' was not found."
             echo "Available playbooks:"
             find . -maxdepth 1 -type f \( -name "*.yml" -o -name "*.yaml" \) -printf "%f\n"
+            exit 1
+          fi
+
+          if [[ -z "${RACF_DEFAULT_PASSWORD:-}" ]]; then
+            echo "ERROR: RACF_DEFAULT_PASSWORD GitHub secret is not configured."
+            exit 1
+          fi
+
+          if [[ -z "${PUSHGATEWAY_URL:-}" ]]; then
+            echo "ERROR: PUSHGATEWAY_URL GitHub secret is not configured."
             exit 1
           fi
 
@@ -145,12 +158,10 @@ jobs:
           github_ansible_playbook_run_duration_seconds{playbook="${PLAYBOOK_NAME}",repo="${REPO_SLUG}",branch="${BRANCH}",build="${BUILD_NUMBER}"} ${DURATION}
           EOF
 
-          # Append job-level metrics when run_jcl.yml creates them.
           if [[ -f job_metrics.prom ]]; then
             cat job_metrics.prom >> metrics.prom
           fi
 
-          # Optionally collect mainframe system metrics.
           if [[ "${RUN_MF_METRICS}" == "true" ]]; then
             ansible-playbook \
               -u ibmuser \
@@ -166,13 +177,15 @@ jobs:
           echo "Generated Prometheus metrics:"
           cat metrics.prom
 
-          # Push metrics only when the Pushgateway secret is configured.
-          if [[ -n "${PUSHGATEWAY_URL:-}" ]]; then
-            curl --fail --show-error --silent \
-              --data-binary @metrics.prom \
-              "${PUSHGATEWAY_URL}/metrics/job/github_ansible/playbook/${PLAYBOOK_NAME}/repo/${REPO_SLUG}/build/${BUILD_NUMBER}"
-          else
-            echo "PUSHGATEWAY_URL is not configured; skipping metrics upload."
-          fi
+          echo "Uploading metrics to Pushgateway..."
+
+          curl \
+            --fail \
+            --show-error \
+            --silent \
+            --data-binary @metrics.prom \
+            "${PUSHGATEWAY_URL}/metrics/job/github_ansible/playbook/${PLAYBOOK_NAME}/repo/${REPO_SLUG}/build/${BUILD_NUMBER}"
+
+          echo "Metrics uploaded successfully."
 
           exit "${RESULT}"
