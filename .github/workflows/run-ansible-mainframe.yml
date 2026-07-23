@@ -7,47 +7,82 @@ on:
         description: Ansible playbook to run
         default: run_jcl.yml
         required: true
+        type: string
+
       JCL_FILE:
         description: JCL file to submit
         default: hello_world.jcl
         required: true
+        type: string
+
       STUDENT_ID:
         description: Student ID
         default: ""
         required: false
+        type: string
+
       RUN_MF_METRICS:
         description: Gather mainframe system metrics
-        default: "false"
+        default: false
         required: false
+        type: boolean
 
 jobs:
   run-ansible-playbook:
     name: Run Ansible playbook on z/OS
     runs-on: ubuntu-latest
+
     container:
       image: innovationinsoftware/mf-ansible:1.8.0
 
+    permissions:
+      contents: read
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
 
       - name: Run playbook
         working-directory: ansible
+
         env:
           PLAYBOOK_NAME: ${{ inputs.PLAYBOOK_NAME }}
           JCL_FILE: ${{ inputs.JCL_FILE }}
           STUDENT_ID: ${{ inputs.STUDENT_ID }}
           RUN_MF_METRICS: ${{ inputs.RUN_MF_METRICS }}
+
+          RACF_DEFAULT_PASSWORD: ${{ secrets.RACF_DEFAULT_PASSWORD }}
+          PUSHGATEWAY_URL: ${{ secrets.PUSHGATEWAY_URL }}
+
           REPO_SLUG: ${{ github.event.repository.name }}
           BRANCH: ${{ github.ref_name }}
           BUILD_NUMBER: ${{ github.run_number }}
-          PUSHGATEWAY_URL: ${{ secrets.PUSHGATEWAY_URL }}
+
           ANSIBLE_COLLECTIONS_PATHS: /root/.ansible/collections
           PYTHONPATH: /root/.ansible/collections
+
         run: |
+          set -uo pipefail
+
           chmod 600 id_rsa
           export ANSIBLE_HOST_KEY_CHECKING=False
 
-          export START_TIME=$(date +%s)
+          # Only permit playbooks located directly in the ansible directory.
+          if [[ "${PLAYBOOK_NAME}" == */* ]]; then
+            echo "ERROR: PLAYBOOK_NAME must contain only a filename."
+            exit 1
+          fi
+
+          if [[ ! -f "${PLAYBOOK_NAME}" ]]; then
+            echo "ERROR: Playbook '${PLAYBOOK_NAME}' was not found."
+            echo "Available playbooks:"
+            find . -maxdepth 1 -type f \( -name "*.yml" -o -name "*.yaml" \) -printf "%f\n"
+            exit 1
+          fi
+
+          echo "Running playbook: ${PLAYBOOK_NAME}"
+
+          START_TIME=$(date +%s)
 
           set +e
 
@@ -55,17 +90,20 @@ jobs:
             -u ibmuser \
             -i inventory.yml \
             --private-key id_rsa \
-            -e "jcl_file=${JCL_FILE} student_id=${STUDENT_ID}" \
-            ${PLAYBOOK_NAME}
+            -e "jcl_file=${JCL_FILE}" \
+            -e "student_id=${STUDENT_ID}" \
+            -e "racf_default_password=${RACF_DEFAULT_PASSWORD}" \
+            "${PLAYBOOK_NAME}"
 
           RESULT=$?
+
           set -e
 
           END_TIME=$(date +%s)
           DURATION=$((END_TIME - START_TIME))
           RUN_TIMESTAMP=$(date +%s)
 
-          if [ "$RESULT" -eq 0 ]; then
+          if [[ "${RESULT}" -eq 0 ]]; then
             SUCCESS=1
             FAILURE=0
           else
@@ -107,27 +145,34 @@ jobs:
           github_ansible_playbook_run_duration_seconds{playbook="${PLAYBOOK_NAME}",repo="${REPO_SLUG}",branch="${BRANCH}",build="${BUILD_NUMBER}"} ${DURATION}
           EOF
 
-          # Append job-level metrics if run_jcl.yml wrote them
-          if [ -f job_metrics.prom ]; then
+          # Append job-level metrics when run_jcl.yml creates them.
+          if [[ -f job_metrics.prom ]]; then
             cat job_metrics.prom >> metrics.prom
           fi
 
-          # Optionally run the system metrics playbook
-          if [ "${RUN_MF_METRICS}" = "true" ]; then
+          # Optionally collect mainframe system metrics.
+          if [[ "${RUN_MF_METRICS}" == "true" ]]; then
             ansible-playbook \
               -u ibmuser \
               -i inventory.yml \
               --private-key id_rsa \
               gather_mf_metrics.yml
 
-            if [ -f mf_metrics.prom ]; then
+            if [[ -f mf_metrics.prom ]]; then
               cat mf_metrics.prom >> metrics.prom
             fi
           fi
 
+          echo "Generated Prometheus metrics:"
           cat metrics.prom
 
-          curl --data-binary @metrics.prom \
-            "${PUSHGATEWAY_URL}/metrics/job/github_ansible/playbook/${PLAYBOOK_NAME}/repo/${REPO_SLUG}/build/${BUILD_NUMBER}"
+          # Push metrics only when the Pushgateway secret is configured.
+          if [[ -n "${PUSHGATEWAY_URL:-}" ]]; then
+            curl --fail --show-error --silent \
+              --data-binary @metrics.prom \
+              "${PUSHGATEWAY_URL}/metrics/job/github_ansible/playbook/${PLAYBOOK_NAME}/repo/${REPO_SLUG}/build/${BUILD_NUMBER}"
+          else
+            echo "PUSHGATEWAY_URL is not configured; skipping metrics upload."
+          fi
 
-          exit $RESULT
+          exit "${RESULT}"
