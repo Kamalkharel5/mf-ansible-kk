@@ -1,3 +1,4 @@
+---
 name: Run Ansible Mainframe
 
 on:
@@ -12,7 +13,7 @@ on:
       JCL_FILE:
         description: JCL file to submit
         default: hello_world.jcl
-        required: true
+        required: false
         type: string
 
       STUDENT_ID:
@@ -46,6 +47,27 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Validate Ansible configuration
+        working-directory: ansible
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "False"
+          ANSIBLE_COLLECTIONS_PATHS: /root/.ansible/collections
+        run: |
+          set -euo pipefail
+
+          chmod 600 id_rsa
+
+          echo "Ansible version:"
+          ansible --version
+
+          echo "Installed IBM collection:"
+          ansible-galaxy collection list ibm.ibm_zos_core
+
+          echo "Parsed inventory:"
+          ansible-inventory \
+            -i inventory.yml \
+            --graph
+
       - name: Run playbook
         working-directory: ansible
 
@@ -62,29 +84,32 @@ jobs:
           BRANCH: ${{ github.ref_name }}
           BUILD_NUMBER: ${{ github.run_number }}
 
+          ANSIBLE_HOST_KEY_CHECKING: "False"
           ANSIBLE_COLLECTIONS_PATHS: /root/.ansible/collections
-          PYTHONPATH: /root/.ansible/collections
 
         run: |
           set -uo pipefail
 
           chmod 600 id_rsa
-          export ANSIBLE_HOST_KEY_CHECKING=False
 
           if [[ "${PLAYBOOK_NAME}" == */* ]]; then
             echo "ERROR: PLAYBOOK_NAME must contain only a filename."
             exit 1
           fi
 
-          if [[ ! -f "${PLAYBOOK_NAME}" ]]; then
-            echo "ERROR: Playbook '${PLAYBOOK_NAME}' was not found."
-            echo "Available playbooks:"
-            find . -maxdepth 1 -type f \( -name "*.yml" -o -name "*.yaml" \) -printf "%f\n"
+          if [[ ! "${PLAYBOOK_NAME}" =~ \.ya?ml$ ]]; then
+            echo "ERROR: PLAYBOOK_NAME must end in .yml or .yaml."
             exit 1
           fi
 
-          if [[ -z "${RACF_DEFAULT_PASSWORD:-}" ]]; then
-            echo "ERROR: RACF_DEFAULT_PASSWORD GitHub secret is not configured."
+          if [[ ! -f "${PLAYBOOK_NAME}" ]]; then
+            echo "ERROR: Playbook '${PLAYBOOK_NAME}' was not found."
+            echo "Available playbooks:"
+            find . \
+              -maxdepth 1 \
+              -type f \
+              \( -name "*.yml" -o -name "*.yaml" \) \
+              -printf "%f\n"
             exit 1
           fi
 
@@ -93,19 +118,51 @@ jobs:
             exit 1
           fi
 
+          EXTRA_VARS=()
+
+          if [[ -n "${JCL_FILE:-}" ]]; then
+            EXTRA_VARS+=(
+              -e
+              "jcl_file=${JCL_FILE}"
+            )
+          fi
+
+          if [[ -n "${STUDENT_ID:-}" ]]; then
+            EXTRA_VARS+=(
+              -e
+              "student_id=${STUDENT_ID}"
+            )
+          fi
+
+          if [[ -n "${RACF_DEFAULT_PASSWORD:-}" ]]; then
+            EXTRA_VARS+=(
+              -e
+              "racf_default_password=${RACF_DEFAULT_PASSWORD}"
+            )
+          fi
+
+          echo "Checking playbook syntax..."
+
+          ansible-playbook \
+            -i inventory.yml \
+            "${EXTRA_VARS[@]}" \
+            "${PLAYBOOK_NAME}" \
+            --syntax-check
+
           echo "Running playbook: ${PLAYBOOK_NAME}"
+
+          rm -f \
+            job_metrics.prom \
+            mf_metrics.prom \
+            metrics.prom
 
           START_TIME=$(date +%s)
 
           set +e
 
           ansible-playbook \
-            -u ibmuser \
             -i inventory.yml \
-            --private-key id_rsa \
-            -e "jcl_file=${JCL_FILE}" \
-            -e "student_id=${STUDENT_ID}" \
-            -e "racf_default_password=${RACF_DEFAULT_PASSWORD}" \
+            "${EXTRA_VARS[@]}" \
             "${PLAYBOOK_NAME}"
 
           RESULT=$?
@@ -124,7 +181,7 @@ jobs:
             FAILURE=1
           fi
 
-          cat <<EOF > metrics.prom
+          cat > metrics.prom <<EOF
           # HELP github_ansible_playbook_latest_success Whether the latest playbook run succeeded
           # TYPE github_ansible_playbook_latest_success gauge
           github_ansible_playbook_latest_success{playbook="${PLAYBOOK_NAME}",repo="${REPO_SLUG}",branch="${BRANCH}"} ${SUCCESS}
@@ -159,17 +216,29 @@ jobs:
           EOF
 
           if [[ -f job_metrics.prom ]]; then
+            echo "" >> metrics.prom
             cat job_metrics.prom >> metrics.prom
           fi
 
           if [[ "${RUN_MF_METRICS}" == "true" ]]; then
+            echo "Gathering mainframe system metrics..."
+
+            set +e
+
             ansible-playbook \
-              -u ibmuser \
               -i inventory.yml \
-              --private-key id_rsa \
               gather_mf_metrics.yml
 
+            MF_METRICS_RESULT=$?
+
+            set -e
+
+            if [[ "${MF_METRICS_RESULT}" -ne 0 ]]; then
+              echo "WARNING: gather_mf_metrics.yml failed with exit code ${MF_METRICS_RESULT}."
+            fi
+
             if [[ -f mf_metrics.prom ]]; then
+              echo "" >> metrics.prom
               cat mf_metrics.prom >> metrics.prom
             fi
           fi
@@ -179,12 +248,14 @@ jobs:
 
           echo "Uploading metrics to Pushgateway..."
 
+          PUSH_URL="${PUSHGATEWAY_URL%/}"
+
           curl \
             --fail \
             --show-error \
             --silent \
             --data-binary @metrics.prom \
-            "${PUSHGATEWAY_URL}/metrics/job/github_ansible/playbook/${PLAYBOOK_NAME}/repo/${REPO_SLUG}/build/${BUILD_NUMBER}"
+            "${PUSH_URL}/metrics/job/github_ansible/playbook/${PLAYBOOK_NAME}/repo/${REPO_SLUG}/build/${BUILD_NUMBER}"
 
           echo "Metrics uploaded successfully."
 
