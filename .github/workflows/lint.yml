@@ -12,7 +12,7 @@ jobs:
         name: Run Linting
         runs-on: ubuntu-latest
         container:
-            image: innovationinsoftware/mf-ansible:1.8.0
+            image: johndeluce/bootcamp-capstone:latest
         defaults:
             run:
                 shell: bash
