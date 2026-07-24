@@ -70,7 +70,6 @@ jobs:
 
         env:
           PLAYBOOK_NAME: ${{ inputs.PLAYBOOK_NAME }}
-          JCL_FILE: ${{ inputs.JCL_FILE }}
           STUDENT_ID: ${{ inputs.STUDENT_ID }}
 
           RACF_DEFAULT_PASSWORD: ${{ secrets.RACF_DEFAULT_PASSWORD }}
