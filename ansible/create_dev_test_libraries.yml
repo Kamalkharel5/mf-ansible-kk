@@ -89,7 +89,7 @@
     ####################################################################
 
     - name: Create DEV and TEST JCL libraries
-      ibm.ibm_zos_core.zos_data_set:
+      zos_data_set:
         name: "{{ item.0 }}.{{ item.1 }}.JCL"
         type: pdse
         state: present
@@ -135,7 +135,7 @@
     ####################################################################
 
     - name: Verify DEV and TEST libraries with LISTCAT
-      ibm.ibm_zos_core.zos_tso_command:
+      zos_tso_command:
         commands:
           - "LISTCAT ENTRIES('{{ item.0 }}.{{ item.1 }}.JCL')"
         max_rc: 8
