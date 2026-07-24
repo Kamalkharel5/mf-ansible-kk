@@ -2,11 +2,8 @@
 - name: Create and verify DEV and TEST libraries for z/OS users
   hosts: zos
   gather_facts: false
-  
-  environment: "{{ environment_vars }}"
 
-  collections:
-    - ibm.ibm_zos_core
+  environment: "{{ environment_vars }}"
 
   vars:
     user_hlqs:
