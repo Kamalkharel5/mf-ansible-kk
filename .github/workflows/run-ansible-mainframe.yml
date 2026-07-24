@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
 
     container:
-      image: innovationinsoftware/mf-ansible:1.8.0
+      image: johndeluce/bootcamp-capstone:latest
 
     defaults:
       run:

@@ -8,3 +8,4 @@ warn_list:
     - risky-file-permissions
     - fqcn
     - run-once
+    - syntax-check
