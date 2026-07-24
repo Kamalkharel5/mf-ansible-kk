@@ -2,9 +2,9 @@
 # .ansible-lint
 
 warn_list:
-    - name
-    - var-naming
-    - yaml
-    - risky-file-permissions
-    - fqcn
-    - run-once
+  - name
+  - var-naming
+  - yaml
+  - risky-file-permissions
+  - fqcn
+  - run-once

@@ -90,7 +90,7 @@ jobs:
           ANSIBLE_COLLECTIONS_PATHS: /root/.ansible/collections
           PYTHONPATH: /root/.ansible/collections
 
-        run: |
+        run: |-
           set -uo pipefail
 
           chmod 600 id_rsa

@@ -14,18 +14,18 @@ all:
         # z/OS SSH/module transfer settings
         ansible_pipelining: false
         ansible_ssh_transfer_method: scp
-        ansible_scp_extra_args: "-O"
+        ansible_scp_extra_args: -O
 
         # z/OS Python and ZOAU runtime environment
         environment_vars:
-          _BPXK_AUTOCVT: "ON"
-          _CEE_RUNOPTS: "FILETAG(AUTOCVT,AUTOTAG) POSIX(ON)"
-          _TAG_REDIR_IN: "txt"
-          _TAG_REDIR_OUT: "txt"
-          _TAG_REDIR_ERR: "txt"
+          _BPXK_AUTOCVT: ON
+          _CEE_RUNOPTS: FILETAG(AUTOCVT,AUTOTAG) POSIX(ON)
+          _TAG_REDIR_IN: txt
+          _TAG_REDIR_OUT: txt
+          _TAG_REDIR_ERR: txt
 
-          LANG: "C"
-          ZOAU_HOME: "/usr/lpp/IBM/zoautil"
+          LANG: C
+          ZOAU_HOME: /usr/lpp/IBM/zoautil
 
           PATH: >-
             /usr/lpp/IBM/cyp/v3r11/pyz/bin:

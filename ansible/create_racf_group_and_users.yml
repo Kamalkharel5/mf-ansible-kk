@@ -18,7 +18,7 @@
         fail_msg: >-
           Required RACF variables are missing. Supply racf_default_password
           securely with Ansible Vault, GitHub Actions secrets, or an extra variable.
-        success_msg: "Required RACF variables are present."
+        success_msg: Required RACF variables are present.
 
     - name: Initialize RACF Prometheus metrics
       ansible.builtin.copy:
@@ -54,7 +54,7 @@
     - name: Check whether RACF group exists
       ibm.ibm_zos_core.zos_tso_command:
         commands:
-          - "LISTGRP {{ racf_group }}"
+          - LISTGRP {{ racf_group }}
         max_rc: 8
       register: group_check
       changed_when: false
@@ -75,7 +75,7 @@
         fail_msg: >-
           LISTGRP did not execute successfully.
           {{ group_check.module_stderr | default(group_check.msg | default('No module error details returned.')) }}
-        success_msg: "LISTGRP returned a valid TSO command response."
+        success_msg: LISTGRP returned a valid TSO command response.
 
     - name: Determine whether RACF group exists
       ansible.builtin.set_fact:
@@ -90,7 +90,7 @@
     - name: Create missing RACF group
       ibm.ibm_zos_core.zos_tso_command:
         commands:
-          - "ADDGROUP {{ racf_group }} OWNER({{ group_owner }})"
+          - ADDGROUP {{ racf_group }} OWNER({{ group_owner }})
         max_rc: 4
       when: not racf_group_exists_fact
       register: group_create_result
@@ -107,7 +107,7 @@
     - name: Check whether RACF users exist
       ibm.ibm_zos_core.zos_tso_command:
         commands:
-          - "LISTUSER {{ item.userid }}"
+          - LISTUSER {{ item.userid }}
         max_rc: 8
       loop: "{{ racf_users }}"
       loop_control:
@@ -148,7 +148,7 @@
     - name: Refresh RACF user information
       ibm.ibm_zos_core.zos_tso_command:
         commands:
-          - "LISTUSER {{ item.userid }}"
+          - LISTUSER {{ item.userid }}
         max_rc: 8
       loop: "{{ racf_users }}"
       loop_control:
@@ -180,11 +180,11 @@
     - name: Connect users to RACF group when needed
       ibm.ibm_zos_core.zos_tso_command:
         commands:
-          - "CONNECT {{ item.item.userid }} GROUP({{ racf_group }})"
+          - CONNECT {{ item.item.userid }} GROUP({{ racf_group }})
         max_rc: 4
       loop: "{{ refreshed_user_checks.results }}"
       loop_control:
-        label: "Connect {{ item.item.userid }} to {{ racf_group }}"
+        label: Connect {{ item.item.userid }} to {{ racf_group }}
       when:
         - item.output is defined
         - item.output | length > 0
@@ -200,7 +200,7 @@
     - name: Verify RACF group
       ibm.ibm_zos_core.zos_tso_command:
         commands:
-          - "LISTGRP {{ racf_group }}"
+          - LISTGRP {{ racf_group }}
         max_rc: 8
       register: verify_group
       changed_when: false
@@ -225,7 +225,7 @@
     - name: Verify RACF users
       ibm.ibm_zos_core.zos_tso_command:
         commands:
-          - "LISTUSER {{ item.userid }}"
+          - LISTUSER {{ item.userid }}
         max_rc: 8
       loop: "{{ racf_users }}"
       loop_control:
@@ -342,4 +342,4 @@
           - "Verified users: {{ racf_users_verified_count }}"
           - "Verified memberships: {{ racf_memberships_verified_count }}"
           - "Group memberships: PASS"
-          - "RACF group and user provisioning completed successfully."
+          - RACF group and user provisioning completed successfully.
