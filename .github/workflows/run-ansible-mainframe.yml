@@ -49,9 +49,12 @@ jobs:
 
       - name: Validate Ansible configuration
         working-directory: ansible
+
         env:
           ANSIBLE_HOST_KEY_CHECKING: "False"
           ANSIBLE_COLLECTIONS_PATHS: /root/.ansible/collections
+          PYTHONPATH: /root/.ansible/collections
+
         run: |
           set -euo pipefail
 
@@ -62,6 +65,12 @@ jobs:
 
           echo "Installed IBM collection:"
           ansible-galaxy collection list ibm.ibm_zos_core
+
+          echo "Collection directory contents:"
+          find /root/.ansible/collections/ansible_collections/ibm \
+            -maxdepth 2 \
+            -type d \
+            2>/dev/null || true
 
           echo "Parsed inventory:"
           ansible-inventory \
@@ -86,6 +95,7 @@ jobs:
 
           ANSIBLE_HOST_KEY_CHECKING: "False"
           ANSIBLE_COLLECTIONS_PATHS: /root/.ansible/collections
+          PYTHONPATH: /root/.ansible/collections
 
         run: |
           set -uo pipefail
@@ -105,11 +115,13 @@ jobs:
           if [[ ! -f "${PLAYBOOK_NAME}" ]]; then
             echo "ERROR: Playbook '${PLAYBOOK_NAME}' was not found."
             echo "Available playbooks:"
+
             find . \
               -maxdepth 1 \
               -type f \
               \( -name "*.yml" -o -name "*.yaml" \) \
               -printf "%f\n"
+
             exit 1
           fi
 
