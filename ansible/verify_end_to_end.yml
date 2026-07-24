@@ -25,6 +25,7 @@
       - USER03.DEV.JCL
       - USER03.TEST.JCL
 
+
   pre_tasks:
     - name: Validate verification variables
       ansible.builtin.assert:
@@ -36,8 +37,8 @@
           - required_racf_users | length > 0
           - required_data_sets is defined
           - required_data_sets | length > 0
-        fail_msg: Required verification variables are missing.
-        success_msg: Verification variables are valid.
+        fail_msg: "Required verification variables are missing."
+        success_msg: "Verification variables are valid."
 
     - name: Initialize end-to-end metrics
       ansible.builtin.copy:
@@ -88,21 +89,29 @@
     ####################################################################
 
     - name: Verify z/OS host is reachable
-      ibm.ibm_zos_core.zos_ping:
-      register: zos_ping_result
+      ansible.builtin.raw: "echo CAPSTONE_ZOS_CONNECTED"
+      register: zos_connectivity_result
       changed_when: false
+      failed_when: false
 
     - name: Display z/OS connectivity result
       ansible.builtin.debug:
-        var: zos_ping_result
+        msg:
+          - "Return code: {{ zos_connectivity_result.rc | default('unknown') }}"
+          - "Output: {{ zos_connectivity_result.stdout | default('') | trim }}"
+          - "Error: {{ zos_connectivity_result.stderr | default('') | trim }}"
 
     - name: Assert z/OS connectivity
       ansible.builtin.assert:
         that:
-          - zos_ping_result.ping is defined
-          - zos_ping_result.ping == "pong"
-        fail_msg: z/OS connectivity verification failed.
-        success_msg: z/OS host is reachable.
+          - zos_connectivity_result.rc is defined
+          - zos_connectivity_result.rc | int == 0
+          - "'CAPSTONE_ZOS_CONNECTED' in (zos_connectivity_result.stdout | default(''))"
+        fail_msg: >-
+          z/OS SSH connectivity verification failed.
+          RC={{ zos_connectivity_result.rc | default('unknown') }};
+          stderr={{ zos_connectivity_result.stderr | default('') | trim }}.
+        success_msg: "z/OS host is reachable."
 
     ####################################################################
     # RACF group verification
@@ -111,7 +120,7 @@
     - name: Check required RACF groups
       ibm.ibm_zos_core.zos_tso_command:
         commands:
-          - LISTGRP {{ item }}
+          - "LISTGRP {{ item }}"
         max_rc: 8
       loop: "{{ required_racf_groups }}"
       loop_control:
@@ -130,8 +139,7 @@
       ansible.builtin.debug:
         msg:
           - "RACF group: {{ item.item }}"
-          - "Return code: {{ item.output[0].rc if (item.output is defined and item.output | length > 0 and item.output[0].rc is defined) else item.rc | default('unknown')
-            }}"
+          - "Return code: {{ item.output[0].rc if (item.output is defined and item.output | length > 0 and item.output[0].rc is defined) else item.rc | default('unknown') }}"
           - "Module message: {{ item.msg | default('none') }}"
           - "Output: {{ item.output | default([]) }}"
       loop: "{{ racf_group_checks.results }}"
@@ -150,7 +158,7 @@
           Module RC={{ item.rc | default('unknown') }};
           message={{ item.msg | default('no module message') }};
           TSO output={{ item.output | default([]) }}.
-        success_msg: Required RACF group {{ item.item }} exists.
+        success_msg: "Required RACF group {{ item.item }} exists."
       loop: "{{ racf_group_checks.results }}"
       loop_control:
         label: "{{ item.item }}"
@@ -162,7 +170,7 @@
     - name: Check required RACF users
       ibm.ibm_zos_core.zos_tso_command:
         commands:
-          - LISTUSER {{ item }}
+          - "LISTUSER {{ item }}"
         max_rc: 8
       loop: "{{ required_racf_users }}"
       loop_control:
@@ -181,8 +189,7 @@
       ansible.builtin.debug:
         msg:
           - "RACF user: {{ item.item }}"
-          - "Return code: {{ item.output[0].rc if (item.output is defined and item.output | length > 0 and item.output[0].rc is defined) else item.rc | default('unknown')
-            }}"
+          - "Return code: {{ item.output[0].rc if (item.output is defined and item.output | length > 0 and item.output[0].rc is defined) else item.rc | default('unknown') }}"
           - "Module message: {{ item.msg | default('none') }}"
           - "Output: {{ item.output | default([]) }}"
       loop: "{{ racf_user_checks.results }}"
@@ -201,7 +208,7 @@
           Module RC={{ item.rc | default('unknown') }};
           message={{ item.msg | default('no module message') }};
           TSO output={{ item.output | default([]) }}.
-        success_msg: Required RACF user {{ item.item }} exists.
+        success_msg: "Required RACF user {{ item.item }} exists."
       loop: "{{ racf_user_checks.results }}"
       loop_control:
         label: "{{ item.item }}"
@@ -213,7 +220,7 @@
     - name: Check required data sets
       ibm.ibm_zos_core.zos_tso_command:
         commands:
-          - LISTCAT ENTRIES('{{ item }}')
+          - "LISTCAT ENTRIES('{{ item }}')"
         max_rc: 8
       loop: "{{ required_data_sets }}"
       loop_control:
@@ -233,8 +240,7 @@
       ansible.builtin.debug:
         msg:
           - "Data set: {{ item.item }}"
-          - "Return code: {{ item.output[0].rc if (item.output is defined and item.output | length > 0 and item.output[0].rc is defined) else item.rc | default('unknown')
-            }}"
+          - "Return code: {{ item.output[0].rc if (item.output is defined and item.output | length > 0 and item.output[0].rc is defined) else item.rc | default('unknown') }}"
           - "Module message: {{ item.msg | default('none') }}"
           - "Output: {{ item.output | default([]) }}"
       loop: "{{ data_set_checks.results }}"
@@ -253,7 +259,7 @@
           Module RC={{ item.rc | default('unknown') }};
           message={{ item.msg | default('no module message') }};
           TSO output={{ item.output | default([]) }}.
-        success_msg: Required data set {{ item.item }} exists.
+        success_msg: "Required data set {{ item.item }} exists."
       loop: "{{ data_set_checks.results }}"
       loop_control:
         label: "{{ item.item }}"
@@ -272,7 +278,7 @@
       ansible.builtin.debug:
         msg:
           - "{{ jcl_verification_message }}"
-          - This playbook verifies connectivity, RACF resources, and data sets.
+          - "This playbook verifies connectivity, RACF resources, and data sets."
 
     ####################################################################
     # Calculate verification totals
@@ -360,9 +366,9 @@
     - name: Display end-to-end verification summary
       ansible.builtin.debug:
         msg:
-          - ==============================================
+          - "=============================================="
           - "CAPSTONE z/OS VERIFICATION: PASSED"
-          - ==============================================
+          - "=============================================="
           - "z/OS reachable: PASS"
           - "RACF groups: {{ verified_racf_group_count }}/{{ required_racf_groups | length }} PASS"
           - "RACF users: {{ verified_racf_user_count }}/{{ required_racf_users | length }} PASS"
