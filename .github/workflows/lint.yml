@@ -1,0 +1,22 @@
+name: Run Linting
+on:
+  workflow_dispatch:
+jobs:
+    run-lint:
+        name: Run Linting
+        runs-on: ubuntu-latest
+        container:
+            image: innovationinsoftware/mf-ansible:1.8.0
+        defaults:
+            run:
+                shell: bash
+        permissions:
+            contents: read
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@v4
+
+            - name: Run linting
+              working-directory: ansible
+              run: |
+                ansible-lint -v
