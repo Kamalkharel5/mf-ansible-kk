@@ -22,16 +22,6 @@ jobs:
             - name: Check out repository
               uses: actions/checkout@v4
 
-            - name: Set up Python
-              uses: actions/setup-python@v4
-              with:
-                python-version: 3.11
-              
-            - name: Install dependencies
-              working-directory: ansible
-              run: |
-                pip install ansible-lint
-
             - name: Run linting
               working-directory: ansible
               run: |

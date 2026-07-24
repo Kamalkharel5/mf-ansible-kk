@@ -4,6 +4,6 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends openssh-client curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir ansible
+RUN pip install --no-cache-dir ansible ansible-lint
 
 RUN ansible-galaxy collection install ibm.ibm_zos_core:1.8.0
