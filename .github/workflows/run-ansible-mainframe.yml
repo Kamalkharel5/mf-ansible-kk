@@ -6,14 +6,8 @@ on:
     inputs:
       PLAYBOOK_NAME:
         description: Ansible playbook to run
-        default: run_jcl.yml
+        default: master-playbook.yml
         required: true
-        type: string
-
-      JCL_FILE:
-        description: JCL file to submit
-        default: hello_world.jcl
-        required: false
         type: string
 
       STUDENT_ID:
