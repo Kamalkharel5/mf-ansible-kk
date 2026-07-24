@@ -30,7 +30,7 @@ jobs:
             - name: Install dependencies
               working-directory: ansible
               run: |
-                pip install ansible-lint yamllint
+                pip install ansible-lint
 
             - name: Run linting
               working-directory: ansible
