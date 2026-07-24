@@ -22,12 +22,6 @@ on:
         required: false
         type: string
 
-      RUN_MF_METRICS:
-        description: Gather mainframe system metrics
-        default: false
-        required: false
-        type: boolean
-
 jobs:
   run-ansible-playbook:
     name: Run Ansible playbook on z/OS
@@ -84,7 +78,6 @@ jobs:
           PLAYBOOK_NAME: ${{ inputs.PLAYBOOK_NAME }}
           JCL_FILE: ${{ inputs.JCL_FILE }}
           STUDENT_ID: ${{ inputs.STUDENT_ID }}
-          RUN_MF_METRICS: ${{ inputs.RUN_MF_METRICS }}
 
           RACF_DEFAULT_PASSWORD: ${{ secrets.RACF_DEFAULT_PASSWORD }}
           PUSHGATEWAY_URL: ${{ secrets.PUSHGATEWAY_URL }}
@@ -101,6 +94,10 @@ jobs:
           set -uo pipefail
 
           chmod 600 id_rsa
+
+          ####################################################################
+          # Validate workflow inputs and required files
+          ####################################################################
 
           if [[ "${PLAYBOOK_NAME}" == */* ]]; then
             echo "ERROR: PLAYBOOK_NAME must contain only a filename."
@@ -120,7 +117,8 @@ jobs:
               -maxdepth 1 \
               -type f \
               \( -name "*.yml" -o -name "*.yaml" \) \
-              -printf "%f\n"
+              -printf "%f\n" \
+              | sort
 
             exit 1
           fi
@@ -129,6 +127,10 @@ jobs:
             echo "ERROR: PUSHGATEWAY_URL GitHub secret is not configured."
             exit 1
           fi
+
+          ####################################################################
+          # Build optional Ansible extra variables
+          ####################################################################
 
           EXTRA_VARS=()
 
@@ -153,6 +155,10 @@ jobs:
             )
           fi
 
+          ####################################################################
+          # Syntax validation
+          ####################################################################
+
           echo "Checking playbook syntax..."
 
           ansible-playbook \
@@ -161,11 +167,14 @@ jobs:
             "${PLAYBOOK_NAME}" \
             --syntax-check
 
+          ####################################################################
+          # Execute selected playbook
+          ####################################################################
+
           echo "Running playbook: ${PLAYBOOK_NAME}"
 
           rm -f \
             job_metrics.prom \
-            mf_metrics.prom \
             metrics.prom
 
           START_TIME=$(date +%s)
@@ -185,6 +194,10 @@ jobs:
           DURATION=$((END_TIME - START_TIME))
           RUN_TIMESTAMP=$(date +%s)
 
+          ####################################################################
+          # Determine workflow result metrics
+          ####################################################################
+
           if [[ "${RESULT}" -eq 0 ]]; then
             SUCCESS=1
             FAILURE=0
@@ -192,6 +205,10 @@ jobs:
             SUCCESS=0
             FAILURE=1
           fi
+
+          ####################################################################
+          # Generate general GitHub Actions metrics
+          ####################################################################
 
           cat > metrics.prom <<EOF
           # HELP github_ansible_playbook_latest_success Whether the latest playbook run succeeded
@@ -227,33 +244,20 @@ jobs:
           github_ansible_playbook_run_duration_seconds{playbook="${PLAYBOOK_NAME}",repo="${REPO_SLUG}",branch="${BRANCH}",build="${BUILD_NUMBER}"} ${DURATION}
           EOF
 
+          ####################################################################
+          # Append playbook-specific metrics
+          ####################################################################
+
           if [[ -f job_metrics.prom ]]; then
             echo "" >> metrics.prom
             cat job_metrics.prom >> metrics.prom
+          else
+            echo "No playbook-specific job_metrics.prom file was generated."
           fi
 
-          if [[ "${RUN_MF_METRICS}" == "true" ]]; then
-            echo "Gathering mainframe system metrics..."
-
-            set +e
-
-            ansible-playbook \
-              -i inventory.yml \
-              gather_mf_metrics.yml
-
-            MF_METRICS_RESULT=$?
-
-            set -e
-
-            if [[ "${MF_METRICS_RESULT}" -ne 0 ]]; then
-              echo "WARNING: gather_mf_metrics.yml failed with exit code ${MF_METRICS_RESULT}."
-            fi
-
-            if [[ -f mf_metrics.prom ]]; then
-              echo "" >> metrics.prom
-              cat mf_metrics.prom >> metrics.prom
-            fi
-          fi
+          ####################################################################
+          # Display and upload metrics
+          ####################################################################
 
           echo "Generated Prometheus metrics:"
           cat metrics.prom
@@ -266,9 +270,16 @@ jobs:
             --fail \
             --show-error \
             --silent \
+            --connect-timeout 10 \
+            --max-time 30 \
             --data-binary @metrics.prom \
             "${PUSH_URL}/metrics/job/github_ansible/playbook/${PLAYBOOK_NAME}/repo/${REPO_SLUG}/build/${BUILD_NUMBER}"
 
+          echo
           echo "Metrics uploaded successfully."
+
+          ####################################################################
+          # Preserve the selected playbook exit code
+          ####################################################################
 
           exit "${RESULT}"
