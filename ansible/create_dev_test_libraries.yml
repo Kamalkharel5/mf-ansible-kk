@@ -6,13 +6,13 @@
   collections:
     - ibm.ibm_zos_core
 
-    # Produces:
-    # USER01.DEV.JCL
-    # USER01.TEST.JCL
-    # USER02.DEV.JCL
-    # USER02.TEST.JCL
-    # USER03.DEV.JCL
-    # USER03.TEST.JCL
+  # Produces:
+  # USER01.DEV.JCL
+  # USER01.TEST.JCL
+  # USER02.DEV.JCL
+  # USER02.TEST.JCL
+  # USER03.DEV.JCL
+  # USER03.TEST.JCL
 
   block:
     ####################################################################
@@ -33,7 +33,7 @@
           Required library provisioning variables are missing.
           Confirm user_hlqs, environments, libraries, and environment_vars
           are defined.
-        success_msg: "Library provisioning variables are valid."
+        success_msg: Library provisioning variables are valid.
 
     ####################################################################
     # Initialize metrics with failure/default values
@@ -123,7 +123,7 @@
     - name: Verify DEV and TEST libraries with LISTCAT
       ibm.ibm_zos_core.zos_tso_command:
         commands:
-          - "LISTCAT ENTRIES('{{ item.0 }}.{{ item.1 }}.JCL')"
+          - LISTCAT ENTRIES('{{ item.0 }}.{{ item.1 }}.JCL')
         max_rc: 8
       loop: "{{ libraries }}"
       loop_control:
@@ -272,5 +272,4 @@
           - "Verified DEV libraries: {{ zos_dev_libraries_verified_count }}"
           - "Verified TEST libraries: {{ zos_test_libraries_verified_count }}"
           - "Libraries changed during this run: {{ zos_libraries_changed_count }}"
-          - "DEV and TEST JCL library provisioning completed successfully."
-          
+          - DEV and TEST JCL library provisioning completed successfully.

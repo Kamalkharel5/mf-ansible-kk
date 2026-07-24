@@ -6,7 +6,7 @@
   tasks:
     - name: Bootstrap message
       ansible.builtin.debug:
-        msg: "Starting master playbook --"
+        msg: Starting master playbook --
 
     - name: Load RACF variables dynamically
       ansible.builtin.include_vars:
