@@ -74,7 +74,7 @@
     ####################################################################
 
     - name: Check whether RACF group exists
-      zos_tso_command:
+      ibm.ibm_zos_core.zos_tso_command:
         commands:
           - "LISTGRP {{ racf_group }}"
         max_rc: 8
@@ -110,7 +110,7 @@
           {{ 'exists' if racf_group_exists_fact else 'does not exist' }}.
 
     - name: Create missing RACF group
-      zos_tso_command:
+      ibm.ibm_zos_core.zos_tso_command:
         commands:
           - "ADDGROUP {{ racf_group }} OWNER({{ group_owner }})"
         max_rc: 4
@@ -127,7 +127,7 @@
     ####################################################################
 
     - name: Check whether RACF users exist
-      zos_tso_command:
+      ibm.ibm_zos_core.zos_tso_command:
         commands:
           - "LISTUSER {{ item.userid }}"
         max_rc: 8
@@ -143,7 +143,7 @@
         var: user_checks
 
     - name: Create missing RACF users
-      zos_tso_command:
+      ibm.ibm_zos_core.zos_tso_command:
         commands:
           - >-
             ADDUSER {{ item.item.userid }}
@@ -168,7 +168,7 @@
     ####################################################################
 
     - name: Refresh RACF user information
-      zos_tso_command:
+      ibm.ibm_zos_core.zos_tso_command:
         commands:
           - "LISTUSER {{ item.userid }}"
         max_rc: 8
@@ -200,7 +200,7 @@
         label: "{{ item.item.userid }}"
 
     - name: Connect users to RACF group when needed
-      zos_tso_command:
+      ibm.ibm_zos_core.zos_tso_command:
         commands:
           - "CONNECT {{ item.item.userid }} GROUP({{ racf_group }})"
         max_rc: 4
@@ -220,7 +220,7 @@
     ####################################################################
 
     - name: Verify RACF group
-      zos_tso_command:
+      ibm.ibm_zos_core.zos_tso_command:
         commands:
           - "LISTGRP {{ racf_group }}"
         max_rc: 8
@@ -245,7 +245,7 @@
           Verification passed: RACF group {{ racf_group }} exists.
 
     - name: Verify RACF users
-      zos_tso_command:
+      ibm.ibm_zos_core.zos_tso_command:
         commands:
           - "LISTUSER {{ item.userid }}"
         max_rc: 8
