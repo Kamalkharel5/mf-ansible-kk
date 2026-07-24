@@ -1,0 +1,33 @@
+---
+- name: Master Playbook for Ansible
+  hosts: mainframe
+  gather_facts: false
+  environment: "{{ environment_vars }}"
+  tasks:
+    - name: Bootstrap message
+      ansible.builtin.debug:
+        msg: Starting master playbook --
+
+    - name: Load RACF variables dynamically
+      ansible.builtin.include_vars:
+        file: racf_vars.yml
+
+    - name: Create Team, Users, and Verify
+      ansible.builtin.include_tasks: create_racf_group_and_users.yml
+      # just for testing purposes
+      #vars: 
+      #  racf_default_password: NEWPASS
+
+    - name: Create Dev and Test Libraries
+      ansible.builtin.include_tasks: create_dev_test_libraries.yml
+
+    # - name: Run Master Playbook for Roles
+    #   ansible.builtin.include_tasks: roles-master-playbook.yml
+    #   vars: 
+    #     seed_base: "/playbooks/seed_files"
+    #     subfolders: 
+    #       - PROCLIB
+    #       - JCL
+    #       - ASM
+    #       - COBOL
+    #       - REXX

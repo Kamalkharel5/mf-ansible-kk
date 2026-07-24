@@ -1,33 +1,20 @@
 ---
 - name: Create and verify DEV and TEST libraries for z/OS users
-  hosts: zos
-  gather_facts: false
 
   environment: "{{ environment_vars }}"
 
   collections:
     - ibm.ibm_zos_core
 
-  vars:
-    user_hlqs:
-      - USER01
-      - USER02
-      - USER03
+  # Produces:
+  # USER01.DEV.JCL
+  # USER01.TEST.JCL
+  # USER02.DEV.JCL
+  # USER02.TEST.JCL
+  # USER03.DEV.JCL
+  # USER03.TEST.JCL
 
-    environments:
-      - DEV
-      - TEST
-
-    # Produces:
-    # USER01.DEV.JCL
-    # USER01.TEST.JCL
-    # USER02.DEV.JCL
-    # USER02.TEST.JCL
-    # USER03.DEV.JCL
-    # USER03.TEST.JCL
-    libraries: "{{ user_hlqs | product(environments) | list }}"
-
-  pre_tasks:
+  block:
     ####################################################################
     # Input validation
     ####################################################################
@@ -46,7 +33,7 @@
           Required library provisioning variables are missing.
           Confirm user_hlqs, environments, libraries, and environment_vars
           are defined.
-        success_msg: "Library provisioning variables are valid."
+        success_msg: Library provisioning variables are valid.
 
     ####################################################################
     # Initialize metrics with failure/default values
@@ -83,7 +70,6 @@
       delegate_to: localhost
       run_once: true
 
-  tasks:
     ####################################################################
     # Create DEV and TEST libraries
     ####################################################################
@@ -137,7 +123,7 @@
     - name: Verify DEV and TEST libraries with LISTCAT
       ibm.ibm_zos_core.zos_tso_command:
         commands:
-          - "LISTCAT ENTRIES('{{ item.0 }}.{{ item.1 }}.JCL')"
+          - LISTCAT ENTRIES('{{ item.0 }}.{{ item.1 }}.JCL')
         max_rc: 8
       loop: "{{ libraries }}"
       loop_control:
@@ -286,5 +272,4 @@
           - "Verified DEV libraries: {{ zos_dev_libraries_verified_count }}"
           - "Verified TEST libraries: {{ zos_test_libraries_verified_count }}"
           - "Libraries changed during this run: {{ zos_libraries_changed_count }}"
-          - "DEV and TEST JCL library provisioning completed successfully."
-          
+          - DEV and TEST JCL library provisioning completed successfully.

@@ -1,0 +1,29 @@
+---
+name: Run Linting
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+jobs:
+  run-lint:
+    name: Run Linting
+    runs-on: ubuntu-latest
+    container:
+      image: johndeluce/bootcamp-capstone:latest
+    defaults:
+      run:
+        shell: bash
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run linting
+        working-directory: ansible
+        run: |-
+          ansible-lint -v

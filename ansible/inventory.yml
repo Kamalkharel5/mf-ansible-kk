@@ -11,9 +11,35 @@ all:
         ansible_ssh_private_key_file: ./id_rsa
         ansible_python_interpreter: /usr/lpp/IBM/cyp/v3r11/pyz/bin/python
 
-        # Do not pipeline Python modules through stdin on z/OS.
+        # z/OS SSH/module transfer settings
         ansible_pipelining: false
-
-        # Transfer modules using legacy SCP mode.
         ansible_ssh_transfer_method: scp
-        ansible_scp_extra_args: "-O"
+        ansible_scp_extra_args: -O
+
+        # z/OS Python and ZOAU runtime environment
+        environment_vars:
+          _BPXK_AUTOCVT: ON
+          _CEE_RUNOPTS: FILETAG(AUTOCVT,AUTOTAG) POSIX(ON)
+          _TAG_REDIR_IN: txt
+          _TAG_REDIR_OUT: txt
+          _TAG_REDIR_ERR: txt
+
+          LANG: C
+          ZOAU_HOME: /usr/lpp/IBM/zoautil
+
+          PATH: >-
+            /usr/lpp/IBM/cyp/v3r11/pyz/bin:
+            /usr/lpp/IBM/zoautil/bin:
+            /bin:
+            /usr/bin
+
+          LIBPATH: >-
+            /usr/lpp/IBM/cyp/v3r11/pyz/lib:
+            /usr/lpp/IBM/zoautil/lib:
+            /lib:
+            /usr/lib:
+            .
+
+          PYTHONPATH: >-
+            /usr/lpp/IBM/cyp/v3r11/pyz/lib/python3.11:
+            /usr/lpp/IBM/zoautil/lib

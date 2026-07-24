@@ -1,3 +1,4 @@
+---
 name: Run Ansible Mainframe
 
 on:
@@ -12,7 +13,7 @@ on:
       JCL_FILE:
         description: JCL file to submit
         default: hello_world.jcl
-        required: true
+        required: false
         type: string
 
       STUDENT_ID:
@@ -21,19 +22,13 @@ on:
         required: false
         type: string
 
-      RUN_MF_METRICS:
-        description: Gather mainframe system metrics
-        default: false
-        required: false
-        type: boolean
-
 jobs:
   run-ansible-playbook:
     name: Run Ansible playbook on z/OS
     runs-on: ubuntu-latest
 
     container:
-      image: innovationinsoftware/mf-ansible:1.8.0
+      image: johndeluce/bootcamp-capstone:latest
 
     defaults:
       run:
@@ -46,6 +41,36 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Validate Ansible configuration
+        working-directory: ansible
+
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "False"
+          ANSIBLE_COLLECTIONS_PATHS: /root/.ansible/collections
+          PYTHONPATH: /root/.ansible/collections
+
+        run: |
+          set -euo pipefail
+
+          chmod 600 id_rsa
+
+          echo "Ansible version:"
+          ansible --version
+
+          echo "Installed IBM collection:"
+          ansible-galaxy collection list ibm.ibm_zos_core
+
+          echo "Collection directory contents:"
+          find /root/.ansible/collections/ansible_collections/ibm \
+            -maxdepth 2 \
+            -type d \
+            2>/dev/null || true
+
+          echo "Parsed inventory:"
+          ansible-inventory \
+            -i inventory.yml \
+            --graph
+
       - name: Run playbook
         working-directory: ansible
 
@@ -53,7 +78,6 @@ jobs:
           PLAYBOOK_NAME: ${{ inputs.PLAYBOOK_NAME }}
           JCL_FILE: ${{ inputs.JCL_FILE }}
           STUDENT_ID: ${{ inputs.STUDENT_ID }}
-          RUN_MF_METRICS: ${{ inputs.RUN_MF_METRICS }}
 
           RACF_DEFAULT_PASSWORD: ${{ secrets.RACF_DEFAULT_PASSWORD }}
           PUSHGATEWAY_URL: ${{ secrets.PUSHGATEWAY_URL }}
@@ -62,29 +86,40 @@ jobs:
           BRANCH: ${{ github.ref_name }}
           BUILD_NUMBER: ${{ github.run_number }}
 
+          ANSIBLE_HOST_KEY_CHECKING: "False"
           ANSIBLE_COLLECTIONS_PATHS: /root/.ansible/collections
           PYTHONPATH: /root/.ansible/collections
 
-        run: |
+        run: |-
           set -uo pipefail
 
           chmod 600 id_rsa
-          export ANSIBLE_HOST_KEY_CHECKING=False
+
+          ####################################################################
+          # Validate workflow inputs and required files
+          ####################################################################
 
           if [[ "${PLAYBOOK_NAME}" == */* ]]; then
             echo "ERROR: PLAYBOOK_NAME must contain only a filename."
             exit 1
           fi
 
-          if [[ ! -f "${PLAYBOOK_NAME}" ]]; then
-            echo "ERROR: Playbook '${PLAYBOOK_NAME}' was not found."
-            echo "Available playbooks:"
-            find . -maxdepth 1 -type f \( -name "*.yml" -o -name "*.yaml" \) -printf "%f\n"
+          if [[ ! "${PLAYBOOK_NAME}" =~ \.ya?ml$ ]]; then
+            echo "ERROR: PLAYBOOK_NAME must end in .yml or .yaml."
             exit 1
           fi
 
-          if [[ -z "${RACF_DEFAULT_PASSWORD:-}" ]]; then
-            echo "ERROR: RACF_DEFAULT_PASSWORD GitHub secret is not configured."
+          if [[ ! -f "${PLAYBOOK_NAME}" ]]; then
+            echo "ERROR: Playbook '${PLAYBOOK_NAME}' was not found."
+            echo "Available playbooks:"
+
+            find . \
+              -maxdepth 1 \
+              -type f \
+              \( -name "*.yml" -o -name "*.yaml" \) \
+              -printf "%f\n" \
+              | sort
+
             exit 1
           fi
 
@@ -93,19 +128,62 @@ jobs:
             exit 1
           fi
 
+          ####################################################################
+          # Build optional Ansible extra variables
+          ####################################################################
+
+          EXTRA_VARS=()
+
+          if [[ -n "${JCL_FILE:-}" ]]; then
+            EXTRA_VARS+=(
+              -e
+              "jcl_file=${JCL_FILE}"
+            )
+          fi
+
+          if [[ -n "${STUDENT_ID:-}" ]]; then
+            EXTRA_VARS+=(
+              -e
+              "student_id=${STUDENT_ID}"
+            )
+          fi
+
+          if [[ -n "${RACF_DEFAULT_PASSWORD:-}" ]]; then
+            EXTRA_VARS+=(
+              -e
+              "racf_default_password=${RACF_DEFAULT_PASSWORD}"
+            )
+          fi
+
+          ####################################################################
+          # Syntax validation
+          ####################################################################
+
+          echo "Checking playbook syntax..."
+
+          ansible-playbook \
+            -i inventory.yml \
+            "${EXTRA_VARS[@]}" \
+            "${PLAYBOOK_NAME}" \
+            --syntax-check
+
+          ####################################################################
+          # Execute selected playbook
+          ####################################################################
+
           echo "Running playbook: ${PLAYBOOK_NAME}"
+
+          rm -f \
+            job_metrics.prom \
+            metrics.prom
 
           START_TIME=$(date +%s)
 
           set +e
 
           ansible-playbook \
-            -u ibmuser \
             -i inventory.yml \
-            --private-key id_rsa \
-            -e "jcl_file=${JCL_FILE}" \
-            -e "student_id=${STUDENT_ID}" \
-            -e "racf_default_password=${RACF_DEFAULT_PASSWORD}" \
+            "${EXTRA_VARS[@]}" \
             "${PLAYBOOK_NAME}"
 
           RESULT=$?
@@ -116,6 +194,10 @@ jobs:
           DURATION=$((END_TIME - START_TIME))
           RUN_TIMESTAMP=$(date +%s)
 
+          ####################################################################
+          # Determine workflow result metrics
+          ####################################################################
+
           if [[ "${RESULT}" -eq 0 ]]; then
             SUCCESS=1
             FAILURE=0
@@ -124,7 +206,11 @@ jobs:
             FAILURE=1
           fi
 
-          cat <<EOF > metrics.prom
+          ####################################################################
+          # Generate general GitHub Actions metrics
+          ####################################################################
+
+          cat > metrics.prom <<EOF
           # HELP github_ansible_playbook_latest_success Whether the latest playbook run succeeded
           # TYPE github_ansible_playbook_latest_success gauge
           github_ansible_playbook_latest_success{playbook="${PLAYBOOK_NAME}",repo="${REPO_SLUG}",branch="${BRANCH}"} ${SUCCESS}
@@ -158,34 +244,42 @@ jobs:
           github_ansible_playbook_run_duration_seconds{playbook="${PLAYBOOK_NAME}",repo="${REPO_SLUG}",branch="${BRANCH}",build="${BUILD_NUMBER}"} ${DURATION}
           EOF
 
+          ####################################################################
+          # Append playbook-specific metrics
+          ####################################################################
+
           if [[ -f job_metrics.prom ]]; then
+            echo "" >> metrics.prom
             cat job_metrics.prom >> metrics.prom
+          else
+            echo "No playbook-specific job_metrics.prom file was generated."
           fi
 
-          if [[ "${RUN_MF_METRICS}" == "true" ]]; then
-            ansible-playbook \
-              -u ibmuser \
-              -i inventory.yml \
-              --private-key id_rsa \
-              gather_mf_metrics.yml
-
-            if [[ -f mf_metrics.prom ]]; then
-              cat mf_metrics.prom >> metrics.prom
-            fi
-          fi
+          ####################################################################
+          # Display and upload metrics
+          ####################################################################
 
           echo "Generated Prometheus metrics:"
           cat metrics.prom
 
           echo "Uploading metrics to Pushgateway..."
 
+          PUSH_URL="${PUSHGATEWAY_URL%/}"
+
           curl \
             --fail \
             --show-error \
             --silent \
+            --connect-timeout 10 \
+            --max-time 30 \
             --data-binary @metrics.prom \
-            "${PUSHGATEWAY_URL}/metrics/job/github_ansible/playbook/${PLAYBOOK_NAME}/repo/${REPO_SLUG}/build/${BUILD_NUMBER}"
+            "${PUSH_URL}/metrics/job/github_ansible/playbook/${PLAYBOOK_NAME}/repo/${REPO_SLUG}/build/${BUILD_NUMBER}"
 
+          echo
           echo "Metrics uploaded successfully."
+
+          ####################################################################
+          # Preserve the selected playbook exit code
+          ####################################################################
 
           exit "${RESULT}"
