@@ -1,11 +1,24 @@
 ---
 - name: Create and verify DEV and TEST libraries for z/OS users
-
+  hosts: zos
+  gather_facts: false
+  
   environment: "{{ environment_vars }}"
 
   collections:
     - ibm.ibm_zos_core
 
+  vars:
+    user_hlqs:
+      - USER01
+      - USER02
+      - USER03
+
+    environments:
+      - DEV
+      - TEST
+
+    libraries: "{{ user_hlqs | product(environments) | list }}"
   # Produces:
   # USER01.DEV.JCL
   # USER01.TEST.JCL
@@ -14,7 +27,7 @@
   # USER03.DEV.JCL
   # USER03.TEST.JCL
 
-  block:
+  tasks:
     ####################################################################
     # Input validation
     ####################################################################
