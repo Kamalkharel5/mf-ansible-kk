@@ -6,6 +6,6 @@ RUN apt-get update \
 
 RUN pip install --no-cache-dir ansible ansible-lint
 
-ENV ANSIBLE_COLLECTIONS_PATHS=/usr/share/ansible/collections
+ENV ANSIBLE_COLLECTIONS_PATH=/usr/share/ansible/collections
 
 RUN ansible-galaxy collection install ibm.ibm_zos_core:1.8.0 -p /usr/share/ansible/collections
