@@ -9,7 +9,13 @@ on:
         default: master-playbook.yml
         required: true
         type: string
-
+      
+      JCL_FILE:
+        description: JCL file to submit (optional)
+        default: ""
+        required: false
+        type: string
+        
       STUDENT_ID:
         description: Student ID
         default: ""
