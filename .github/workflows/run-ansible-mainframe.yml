@@ -12,7 +12,7 @@ on:
       
       JCL_FILE:
         description: JCL file to submit (optional)
-        default: "hello_world.jcl"
+        default: ""
         required: false
         type: string
 
