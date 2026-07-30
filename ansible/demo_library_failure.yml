@@ -48,7 +48,7 @@
           - item.output is defined
           - item.output | length > 0
           - item.output[0].rc is defined
-          - item.output[0].rc | int == 99  # <--- SET TO 99 FOR DEMO FAILURE! (Change to 0 to fix)
+          - item.output[0].rc | int == 0  # <--- SET TO 99 FOR DEMO FAILURE! (Change to 0 to fix)
         fail_msg: >-
           Verification failed: library {{ item.item[0] }}.{{ item.item[1] }}.JCL was not found by LISTCAT.
         success_msg: >-
