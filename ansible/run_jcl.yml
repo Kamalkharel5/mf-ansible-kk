@@ -15,7 +15,7 @@
     - name: Derive student-scoped naming variables
       set_fact:
         student_id_upper: "{{ student_id | upper if (student_id is defined and student_id != '') else '' }}"
-        job_prefix: "{{ (student_id | upper)[:5] if (student_id is defined and student_id != '') else '' }}"
+        job_prefix: "{{ (student_id | upper)[:5] if (student_id is defined and student_id != '') else 'IBMUSER' }}"
         ds_hlq: >-
           {{ 'IBMUSER.' + (student_id | upper)
              if (student_id is defined and student_id != '')
