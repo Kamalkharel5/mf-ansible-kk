@@ -56,9 +56,9 @@
           cics_program_info{program="{{ record.program | default('unknown') }}"} 1
           {% endfor %}
 
-      # HELP cics_program_total Number of CICS programs
-      # TYPE cics_program_total gauge
-      cics_program_total {{ result.records | length }}
+          # HELP cics_program_total Number of CICS programs
+          # TYPE cics_program_total gauge
+          cics_program_total {{ result.records | length }}
 
     - name: Check generated CICS metrics file
       ansible.builtin.stat:
