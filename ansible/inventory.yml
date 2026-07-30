@@ -12,7 +12,7 @@ all:
         ansible_python_interpreter: /usr/lpp/IBM/cyp/v3r11/pyz/bin/python
 
         # z/OS SSH/module transfer settings
-        ansible_pipelining: false
+        ansible_pipelining: true
         ansible_ssh_transfer_method: scp
         ansible_scp_extra_args: -O
 

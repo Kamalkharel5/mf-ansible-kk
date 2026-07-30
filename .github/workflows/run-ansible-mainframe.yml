@@ -9,9 +9,15 @@ on:
         default: master-playbook.yml
         required: true
         type: string
+      
+      JCL_FILE:
+        description: JCL file to submit (optional)
+        default: ""
+        required: false
+        type: string
 
       STUDENT_ID:
-        description: Student ID
+        description: Student ID (optional)
         default: ""
         required: false
         type: string
@@ -71,6 +77,7 @@ jobs:
         env:
           PLAYBOOK_NAME: ${{ inputs.PLAYBOOK_NAME }}
           STUDENT_ID: ${{ inputs.STUDENT_ID }}
+          JCL_FILE: ${{ inputs.JCL_FILE }}
 
           RACF_DEFAULT_PASSWORD: ${{ secrets.RACF_DEFAULT_PASSWORD }}
           PUSHGATEWAY_URL: ${{ secrets.PUSHGATEWAY_URL }}
