@@ -16,30 +16,30 @@ all:
         ansible_ssh_transfer_method: scp
         ansible_scp_extra_args: -O
 
-        # z/OS Python and ZOAU runtime environment
-        environment_vars:
-          _BPXK_AUTOCVT: ON
-          _CEE_RUNOPTS: FILETAG(AUTOCVT,AUTOTAG) POSIX(ON)
-          _TAG_REDIR_IN: txt
-          _TAG_REDIR_OUT: txt
-          _TAG_REDIR_ERR: txt
+        # # z/OS Python and ZOAU runtime environment
+        # environment_vars:
+        #   _BPXK_AUTOCVT: ON
+        #   _CEE_RUNOPTS: FILETAG(AUTOCVT,AUTOTAG) POSIX(ON)
+        #   _TAG_REDIR_IN: txt
+        #   _TAG_REDIR_OUT: txt
+        #   _TAG_REDIR_ERR: txt
 
-          LANG: C
-          ZOAU_HOME: /usr/lpp/IBM/zoautil
+        #   LANG: C
+        #   ZOAU_HOME: /usr/lpp/IBM/zoautil
 
-          PATH: >-
-            /usr/lpp/IBM/cyp/v3r11/pyz/bin:
-            /usr/lpp/IBM/zoautil/bin:
-            /bin:
-            /usr/bin
+        #   PATH: >-
+        #     /usr/lpp/IBM/cyp/v3r11/pyz/bin:
+        #     /usr/lpp/IBM/zoautil/bin:
+        #     /bin:
+        #     /usr/bin
 
-          LIBPATH: >-
-            /usr/lpp/IBM/cyp/v3r11/pyz/lib:
-            /usr/lpp/IBM/zoautil/lib:
-            /lib:
-            /usr/lib:
-            .
+        #   LIBPATH: >-
+        #     /usr/lpp/IBM/cyp/v3r11/pyz/lib:
+        #     /usr/lpp/IBM/zoautil/lib:
+        #     /lib:
+        #     /usr/lib:
+        #     .
 
-          PYTHONPATH: >-
-            /usr/lpp/IBM/cyp/v3r11/pyz/lib/python3.11:
-            /usr/lpp/IBM/zoautil/lib
+        #   PYTHONPATH: >-
+        #     /usr/lpp/IBM/cyp/v3r11/pyz/lib/python3.11:
+        #     /usr/lpp/IBM/zoautil/lib
