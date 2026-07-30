@@ -22,7 +22,7 @@
 
     - name: Initialize RACF Prometheus metrics
       ansible.builtin.copy:
-        dest: "{{ playbook_dir }}/job_metrics.prom"
+        dest: "{{ playbook_dir }}/racf_metrics.prom"
         mode: "0644"
         content: |
           # HELP racf_group_exists Whether the expected RACF group exists
@@ -128,7 +128,7 @@
             NAME('{{ item.item.name }}')
             OWNER({{ racf_group }})
             DFLTGRP({{ racf_group }})
-            PASSWORD({{ default_password }})
+            PASSWORD({{ racf_default_password }})
         max_rc: 4
       loop: "{{ user_checks.results }}"
       loop_control:
@@ -293,7 +293,7 @@
 
     - name: Write successful RACF Prometheus metrics
       ansible.builtin.copy:
-        dest: "{{ playbook_dir }}/job_metrics.prom"
+        dest: "{{ playbook_dir }}/racf_metrics.prom"
         mode: "0644"
         content: |
           # HELP racf_group_exists Whether the expected RACF group exists
@@ -320,7 +320,7 @@
 
     - name: Read generated RACF Prometheus metrics
       ansible.builtin.command:
-        cmd: cat "{{ playbook_dir }}/job_metrics.prom"
+        cmd: cat "{{ playbook_dir }}/racf_metrics.prom"
       delegate_to: localhost
       run_once: true
       register: racf_metrics_output

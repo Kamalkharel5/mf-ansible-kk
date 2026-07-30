@@ -9,7 +9,7 @@ on:
         default: master-playbook.yml
         required: true
         type: string
-      
+
       JCL_FILE:
         description: JCL file to submit (optional)
         default: ""
@@ -168,14 +168,20 @@ jobs:
             --syntax-check
 
           ####################################################################
+          # Remove metrics left from any previous execution
+          ####################################################################
+
+          rm -f \
+            job_metrics.prom \
+            racf_metrics.prom \
+            library_metrics.prom \
+            metrics.prom
+
+          ####################################################################
           # Execute selected playbook
           ####################################################################
 
           echo "Running playbook: ${PLAYBOOK_NAME}"
-
-          rm -f \
-            job_metrics.prom \
-            metrics.prom
 
           START_TIME=$(date +%s)
 
@@ -245,23 +251,32 @@ jobs:
           EOF
 
           ####################################################################
-          # Append playbook-specific metrics
+          # Append all playbook-specific metrics
           ####################################################################
 
-          if [[ -f job_metrics.prom ]]; then
-            echo "" >> metrics.prom
-            cat job_metrics.prom >> metrics.prom
-          else
-            echo "No playbook-specific job_metrics.prom file was generated."
-          fi
+          for metric_file in \
+            racf_metrics.prom \
+            library_metrics.prom \
+            job_metrics.prom
+          do
+            if [[ -s "${metric_file}" ]]; then
+              echo "" >> metrics.prom
+              cat "${metric_file}" >> metrics.prom
+              echo "Added ${metric_file} to metrics.prom."
+            else
+              echo "${metric_file} was not generated or is empty."
+            fi
+          done
 
           ####################################################################
           # Display and upload metrics
           ####################################################################
 
+          echo
           echo "Generated Prometheus metrics:"
           cat metrics.prom
 
+          echo
           echo "Uploading metrics to Pushgateway..."
 
           PUSH_URL="${PUSHGATEWAY_URL%/}"
