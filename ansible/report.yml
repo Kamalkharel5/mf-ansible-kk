@@ -1,39 +1,24 @@
-# (c) Copyright IBM Corporation 2021
-# Apache License, Version 2.0 (see https://opensource.org/licenses/Apache-2.0)
-###############################################################################
-# Contributed by the Ansible Content for IBM Z Team
-#
-# Changelog
-#  All notable changes to this sample will be documented in this playbook
-#
-# 2021-01-31
-#  - Released initial version
-###############################################################################
-# This sample playbook demonstrates basic usage of the cmci_get module
-# included in the ibm.ibm_zos_cics collection
-#
-# Usage:
-#  ansible-playbook report.yml
-#
-# Notes:
-#  This sample playbook demonstrates how to use the cmci_get module from the
-#  ibm.ibm_zos_cics collection to retrieve operational data from running CICS
-#  regions. This example, retrieves information corresponding to the CICSRGN
-#  resource table, but can be adapted to retrieve information about any of the
-#  resource tables supported by CPSM. The retrieved information is written to a
-#  csv file, suitable for opening as a spreadsheet.  This sample additionally
-#  shows how to automate installation of pre-requisites for the CMCI modules.
-#
-# Requirements:
-#   IBM z/OS CICS collection 1.0.0 or later
-###############################################################################
 ---
-- name: CICS CMCI Report
-
-  hosts: "localhost"
+- name: Generate CICS CMCI report
+  hosts: localhost
+  connection: local
   gather_facts: false
 
+  collections:
+    - ibm.ibm_zos_cics
+
   vars:
+    cmci_host: "173.45.66.189"
+    cmci_port: 1490
+    cmci_scheme: "http"
+
+    cmci_context: ""
+    cmci_user: ""
+    cmci_password: ""
+
+    report_template: "{{ playbook_dir }}/csv.j2"
+    report_path: "{{ playbook_dir }}/report.csv"
+
     attributes:
       - eyu_cicsname
       - release
@@ -41,41 +26,96 @@
       - totltasks
 
   tasks:
-    ############################################################################
-    # Install module dependencies
-    ############################################################################
-    - name: Make sure CMCI module dependencies are installed
+    - name: Validate CMCI connection settings
+      ansible.builtin.assert:
+        that:
+          - cmci_host | length > 0
+          - cmci_port | int > 0
+          - cmci_scheme in ["http", "https"]
+        fail_msg: "The CMCI host, port, or scheme is invalid."
+        success_msg: >-
+          CMCI connection settings validated for
+          {{ cmci_scheme }}://{{ cmci_host }}:{{ cmci_port }}.
+
+    - name: Check whether the CSV template exists
+      ansible.builtin.stat:
+        path: "{{ report_template }}"
+      register: csv_template
+
+    - name: Validate CSV template
+      ansible.builtin.assert:
+        that:
+          - csv_template.stat.exists
+          - csv_template.stat.isreg
+        fail_msg: "CSV template was not found at {{ report_template }}."
+        success_msg: "CSV template found at {{ report_template }}."
+
+    - name: Check whether the CMCI port is reachable
+      ansible.builtin.wait_for:
+        host: "{{ cmci_host }}"
+        port: "{{ cmci_port | int }}"
+        state: started
+        timeout: 20
+        connect_timeout: 5
+      changed_when: false
+
+    - name: Ensure CMCI Python dependencies are installed
       ansible.builtin.pip:
         name:
           - requests
           - xmltodict
-          - typing;python_version<"3.5"
+        state: present
 
-    ############################################################################
-    # Get information about CICS regions from the supplied context, using CMCI
-    ############################################################################
-    - name: Get information about CICS regions
+    - name: Retrieve information about CICS regions
       ibm.ibm_zos_cics.cmci_get:
-        context: ""
-        cmci_host: "173.45.66.189"
-        cmci_port: "1490"
-        cmci_user: "{{ cmci_user | default(omit) }}"
-        cmci_password: "{{ cmci_password | default(omit) }}"
-        scheme: "http"
+        cmci_host: "{{ cmci_host }}"
+        cmci_port: "{{ cmci_port | int }}"
+        scheme: "{{ cmci_scheme }}"
+        context: "{{ cmci_context }}"
+        cmci_user: >-
+          {{ cmci_user if cmci_user | length > 0 else omit }}
+        cmci_password: >-
+          {{ cmci_password if cmci_password | length > 0 else omit }}
         type: "CICSRegion"
       register: result
+      no_log: "{{ cmci_password | length > 0 }}"
 
-    ############################################################################
-    # Print the response from CMCI to the log - useful to see attribute names!
-    ############################################################################
-    - debug:
-        msg: '{{ result }}'
+    - name: Display CMCI request summary
+      ansible.builtin.debug:
+        msg:
+          - "CMCI request completed successfully."
+          - "Endpoint: {{ cmci_scheme }}://{{ cmci_host }}:{{ cmci_port }}"
+          - "Resource type: CICSRegion"
+          - "Context supplied: {{ cmci_context | length > 0 }}"
+          - "Authentication supplied: {{ cmci_user | length > 0 }}"
 
-    ############################################################################
-    # Write the report csv file using a template
-    ############################################################################
     - name: Create CSV report from template
       ansible.builtin.template:
-        src: csv.j2
-        dest: report.csv
-        mode: u+rw
+        src: "{{ report_template }}"
+        dest: "{{ report_path }}"
+        mode: "0600"
+
+    - name: Check generated CSV report
+      ansible.builtin.stat:
+        path: "{{ report_path }}"
+      register: report_file
+
+    - name: Validate generated CSV report
+      ansible.builtin.assert:
+        that:
+          - report_file.stat.exists
+          - report_file.stat.isreg
+          - report_file.stat.size | int > 0
+        fail_msg: "The CICS CMCI report was not generated or is empty."
+        success_msg: >-
+          CICS CMCI report generated successfully at
+          {{ report_path }} with size
+          {{ report_file.stat.size }} bytes.
+
+    - name: Display final report summary
+      ansible.builtin.debug:
+        msg:
+          - "CICS CMCI reporting: PASS"
+          - "CMCI endpoint: {{ cmci_scheme }}://{{ cmci_host }}:{{ cmci_port }}"
+          - "Report: {{ report_path }}"
+          - "Report size: {{ report_file.stat.size }} bytes"
