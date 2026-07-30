@@ -216,6 +216,7 @@ jobs:
             job_metrics.prom \
             racf_metrics.prom \
             library_metrics.prom \
+            cics_metrics.prom \
             metrics.prom
 
           if [[ "${PLAYBOOK_NAME}" == "report.yml" ]]; then
@@ -303,7 +304,8 @@ jobs:
           for metric_file in \
             racf_metrics.prom \
             library_metrics.prom \
-            job_metrics.prom
+            job_metrics.prom \
+            cics_metrics.prom
           do
             if [[ -s "${metric_file}" ]]; then
               echo "" >> metrics.prom
@@ -346,13 +348,15 @@ jobs:
           exit "${RESULT}"
 
       #########################################################################
-      # Upload the generated CICS report
+      # Upload generated CICS report and metrics
       #########################################################################
       - name: Upload CICS CMCI report
         if: always() && inputs.PLAYBOOK_NAME == 'report.yml'
         uses: actions/upload-artifact@v4
         with:
           name: cics-cmci-report-${{ github.run_number }}
-          path: ansible/report.csv
+          path: |
+            ansible/report.csv
+            ansible/cics_metrics.prom
           if-no-files-found: warn
           retention-days: 30

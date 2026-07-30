@@ -18,6 +18,7 @@
 
     report_template: "{{ playbook_dir }}/csv.j2"
     report_path: "{{ playbook_dir }}/report.csv"
+    cics_metrics_path: "{{ playbook_dir }}/cics_metrics.prom"
 
     attributes:
       - eyu_cicsname
@@ -80,12 +81,22 @@
       register: result
       no_log: "{{ cmci_password | length > 0 }}"
 
+    - name: Validate returned CICS records
+      ansible.builtin.assert:
+        that:
+          - result.records is defined
+          - result.records | length > 0
+        fail_msg: "The CMCI request succeeded but returned no CICS region records."
+        success_msg: >-
+          CMCI returned {{ result.records | length }} CICS region record(s).
+
     - name: Display CMCI request summary
       ansible.builtin.debug:
         msg:
           - "CMCI request completed successfully."
           - "Endpoint: {{ cmci_scheme }}://{{ cmci_host }}:{{ cmci_port }}"
           - "Resource type: CICSRegion"
+          - "Records returned: {{ result.records | length }}"
           - "Context supplied: {{ cmci_context | length > 0 }}"
           - "Authentication supplied: {{ cmci_user | length > 0 }}"
 
@@ -95,10 +106,36 @@
         dest: "{{ report_path }}"
         mode: "0600"
 
+    - name: Generate CICS Prometheus metrics
+      ansible.builtin.copy:
+        dest: "{{ cics_metrics_path }}"
+        mode: "0600"
+        content: |
+          # HELP cics_region_info Static information about a CICS region
+          # TYPE cics_region_info gauge
+          {% for region in result.records %}
+          cics_region_info{region="{{ region.eyu_cicsname | default('unknown') }}",release="{{ region.release | default('unknown') }}",jobid="{{ region.jobid | default('unknown') }}"} 1
+          {% endfor %}
+
+          # HELP cics_region_total_tasks Total number of tasks reported by a CICS region
+          # TYPE cics_region_total_tasks gauge
+          {% for region in result.records %}
+          cics_region_total_tasks{region="{{ region.eyu_cicsname | default('unknown') }}"} {{ region.totltasks | default(0) | int }}
+          {% endfor %}
+
+          # HELP cics_region_report_record_count Number of CICS region records returned by CMCI
+          # TYPE cics_region_report_record_count gauge
+          cics_region_report_record_count {{ result.records | length }}
+
     - name: Check generated CSV report
       ansible.builtin.stat:
         path: "{{ report_path }}"
       register: report_file
+
+    - name: Check generated CICS metrics file
+      ansible.builtin.stat:
+        path: "{{ cics_metrics_path }}"
+      register: cics_metrics_file
 
     - name: Validate generated CSV report
       ansible.builtin.assert:
@@ -112,10 +149,35 @@
           {{ report_path }} with size
           {{ report_file.stat.size }} bytes.
 
+    - name: Validate generated CICS metrics
+      ansible.builtin.assert:
+        that:
+          - cics_metrics_file.stat.exists
+          - cics_metrics_file.stat.isreg
+          - cics_metrics_file.stat.size | int > 0
+        fail_msg: "The CICS Prometheus metrics file was not generated or is empty."
+        success_msg: >-
+          CICS Prometheus metrics generated successfully at
+          {{ cics_metrics_path }} with size
+          {{ cics_metrics_file.stat.size }} bytes.
+
+    - name: Display generated CICS metrics
+      ansible.builtin.command:
+        cmd: "cat {{ cics_metrics_path }}"
+      register: displayed_cics_metrics
+      changed_when: false
+
+    - name: Show CICS Prometheus metrics
+      ansible.builtin.debug:
+        var: displayed_cics_metrics.stdout_lines
+
     - name: Display final report summary
       ansible.builtin.debug:
         msg:
           - "CICS CMCI reporting: PASS"
           - "CMCI endpoint: {{ cmci_scheme }}://{{ cmci_host }}:{{ cmci_port }}"
-          - "Report: {{ report_path }}"
-          - "Report size: {{ report_file.stat.size }} bytes"
+          - "Records returned: {{ result.records | length }}"
+          - "CSV report: {{ report_path }}"
+          - "CSV report size: {{ report_file.stat.size }} bytes"
+          - "Prometheus metrics: {{ cics_metrics_path }}"
+          - "Metrics file size: {{ cics_metrics_file.stat.size }} bytes"
