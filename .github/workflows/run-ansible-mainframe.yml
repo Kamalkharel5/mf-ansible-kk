@@ -24,7 +24,7 @@ on:
 
 jobs:
   run-ansible-playbook:
-    name: Run Ansible playbook on z/OS
+    name: Run Ansible playbook
     runs-on: ubuntu-latest
 
     container:
@@ -38,17 +38,52 @@ jobs:
       contents: read
 
     steps:
+      #########################################################################
+      # Check out repository
+      #########################################################################
       - name: Check out repository
         uses: actions/checkout@v4
 
+      #########################################################################
+      # Install dependencies required only by report.yml
+      #########################################################################
+      - name: Install CICS CMCI reporting requirements
+        if: inputs.PLAYBOOK_NAME == 'report.yml'
+        working-directory: ansible
+        env:
+          ANSIBLE_COLLECTIONS_PATHS: /root/.ansible/collections
+        run: |
+          set -euo pipefail
+
+          echo "Installing CMCI Python dependencies..."
+          python -m pip install requests xmltodict
+
+          echo "Checking for the IBM z/OS CICS collection..."
+
+          if ansible-galaxy collection list 2>/dev/null \
+            | grep -q "ibm.ibm_zos_cics"; then
+            echo "ibm.ibm_zos_cics is already installed."
+          else
+            echo "Installing ibm.ibm_zos_cics..."
+
+            ansible-galaxy collection install \
+              ibm.ibm_zos_cics \
+              --collections-path /root/.ansible/collections
+          fi
+
+          echo
+          echo "Installed CICS collection:"
+          ansible-galaxy collection list ibm.ibm_zos_cics
+
+      #########################################################################
+      # Validate Ansible configuration
+      #########################################################################
       - name: Validate Ansible configuration
         working-directory: ansible
-
         env:
           ANSIBLE_HOST_KEY_CHECKING: "False"
           ANSIBLE_COLLECTIONS_PATHS: /root/.ansible/collections
           PYTHONPATH: /root/.ansible/collections
-
         run: |
           set -euo pipefail
 
@@ -57,23 +92,28 @@ jobs:
           echo "Ansible version:"
           ansible --version
 
-          echo "Installed IBM collection:"
-          ansible-galaxy collection list ibm.ibm_zos_core
+          echo
+          echo "Installed IBM collections:"
+          ansible-galaxy collection list | grep "ibm.ibm" || true
 
+          echo
           echo "Collection directory contents:"
           find /root/.ansible/collections/ansible_collections/ibm \
             -maxdepth 2 \
             -type d \
             2>/dev/null || true
 
+          echo
           echo "Parsed inventory:"
           ansible-inventory \
             -i inventory.yml \
             --graph
 
+      #########################################################################
+      # Run selected playbook and generate Prometheus metrics
+      #########################################################################
       - name: Run playbook
         working-directory: ansible
-
         env:
           PLAYBOOK_NAME: ${{ inputs.PLAYBOOK_NAME }}
           STUDENT_ID: ${{ inputs.STUDENT_ID }}
@@ -90,14 +130,14 @@ jobs:
           ANSIBLE_COLLECTIONS_PATHS: /root/.ansible/collections
           PYTHONPATH: /root/.ansible/collections
 
-        run: |-
+        run: |
           set -uo pipefail
 
           chmod 600 id_rsa
 
-          ####################################################################
+          #####################################################################
           # Validate workflow inputs and required files
-          ####################################################################
+          #####################################################################
 
           if [[ "${PLAYBOOK_NAME}" == */* ]]; then
             echo "ERROR: PLAYBOOK_NAME must contain only a filename."
@@ -111,6 +151,7 @@ jobs:
 
           if [[ ! -f "${PLAYBOOK_NAME}" ]]; then
             echo "ERROR: Playbook '${PLAYBOOK_NAME}' was not found."
+            echo
             echo "Available playbooks:"
 
             find . \
@@ -128,9 +169,9 @@ jobs:
             exit 1
           fi
 
-          ####################################################################
+          #####################################################################
           # Build optional Ansible extra variables
-          ####################################################################
+          #####################################################################
 
           EXTRA_VARS=()
 
@@ -155,9 +196,9 @@ jobs:
             )
           fi
 
-          ####################################################################
+          #####################################################################
           # Syntax validation
-          ####################################################################
+          #####################################################################
 
           echo "Checking playbook syntax..."
 
@@ -167,9 +208,9 @@ jobs:
             "${PLAYBOOK_NAME}" \
             --syntax-check
 
-          ####################################################################
-          # Remove metrics left from any previous execution
-          ####################################################################
+          #####################################################################
+          # Remove files left by previous executions
+          #####################################################################
 
           rm -f \
             job_metrics.prom \
@@ -177,10 +218,15 @@ jobs:
             library_metrics.prom \
             metrics.prom
 
-          ####################################################################
-          # Execute selected playbook
-          ####################################################################
+          if [[ "${PLAYBOOK_NAME}" == "report.yml" ]]; then
+            rm -f report.csv
+          fi
 
+          #####################################################################
+          # Execute selected playbook
+          #####################################################################
+
+          echo
           echo "Running playbook: ${PLAYBOOK_NAME}"
 
           START_TIME=$(date +%s)
@@ -200,9 +246,9 @@ jobs:
           DURATION=$((END_TIME - START_TIME))
           RUN_TIMESTAMP=$(date +%s)
 
-          ####################################################################
+          #####################################################################
           # Determine workflow result metrics
-          ####################################################################
+          #####################################################################
 
           if [[ "${RESULT}" -eq 0 ]]; then
             SUCCESS=1
@@ -212,9 +258,9 @@ jobs:
             FAILURE=1
           fi
 
-          ####################################################################
+          #####################################################################
           # Generate general GitHub Actions metrics
-          ####################################################################
+          #####################################################################
 
           cat > metrics.prom <<EOF
           # HELP github_ansible_playbook_latest_success Whether the latest playbook run succeeded
@@ -250,9 +296,9 @@ jobs:
           github_ansible_playbook_run_duration_seconds{playbook="${PLAYBOOK_NAME}",repo="${REPO_SLUG}",branch="${BRANCH}",build="${BUILD_NUMBER}"} ${DURATION}
           EOF
 
-          ####################################################################
-          # Append all playbook-specific metrics
-          ####################################################################
+          #####################################################################
+          # Append playbook-specific metrics
+          #####################################################################
 
           for metric_file in \
             racf_metrics.prom \
@@ -268,9 +314,9 @@ jobs:
             fi
           done
 
-          ####################################################################
+          #####################################################################
           # Display and upload metrics
-          ####################################################################
+          #####################################################################
 
           echo
           echo "Generated Prometheus metrics:"
@@ -293,8 +339,20 @@ jobs:
           echo
           echo "Metrics uploaded successfully."
 
-          ####################################################################
+          #####################################################################
           # Preserve the selected playbook exit code
-          ####################################################################
+          #####################################################################
 
           exit "${RESULT}"
+
+      #########################################################################
+      # Upload the generated CICS report
+      #########################################################################
+      - name: Upload CICS CMCI report
+        if: always() && inputs.PLAYBOOK_NAME == 'report.yml'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cics-cmci-report-${{ github.run_number }}
+          path: ansible/report.csv
+          if-no-files-found: warn
+          retention-days: 30
