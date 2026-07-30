@@ -25,7 +25,7 @@
       zos_copy:
         content: "{{ lookup('template', playbook_dir + '/jcl/' + jcl_file) }}"
         dest: "/u/ibmuser/{{ jcl_file }}"
-        force: true
+        replace: true
 
     - name: Submit job
       zos_job_submit:
