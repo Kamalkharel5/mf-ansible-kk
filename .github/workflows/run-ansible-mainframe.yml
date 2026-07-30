@@ -44,36 +44,6 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      #########################################################################
-      # Install dependencies required only by report.yml
-      #########################################################################
-      - name: Install CICS CMCI reporting requirements
-        if: inputs.PLAYBOOK_NAME == 'report.yml'
-        working-directory: ansible
-        env:
-          ANSIBLE_COLLECTIONS_PATHS: /root/.ansible/collections
-        run: |
-          set -euo pipefail
-
-          echo "Installing CMCI Python dependencies..."
-          python -m pip install requests xmltodict
-
-          echo "Checking for the IBM z/OS CICS collection..."
-
-          if ansible-galaxy collection list 2>/dev/null \
-            | grep -q "ibm.ibm_zos_cics"; then
-            echo "ibm.ibm_zos_cics is already installed."
-          else
-            echo "Installing ibm.ibm_zos_cics..."
-
-            ansible-galaxy collection install \
-              ibm.ibm_zos_cics \
-              --collections-path /root/.ansible/collections
-          fi
-
-          echo
-          echo "Installed CICS collection:"
-          ansible-galaxy collection list ibm.ibm_zos_cics
 
       #########################################################################
       # Validate Ansible configuration

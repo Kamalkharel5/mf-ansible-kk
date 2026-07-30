@@ -13,3 +13,11 @@ environment_vars:
   _TAG_REDIR_OUT: "txt"
   LANG: "C"
   PYTHONSTDINENCODING: "cp1047"
+
+cmci_host: "173.45.66.189"
+cmci_port: 1490
+cmci_scheme: "http"
+
+cmci_context: ""
+cmci_user: ""
+cmci_password: ""
