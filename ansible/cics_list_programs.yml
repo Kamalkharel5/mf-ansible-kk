@@ -44,3 +44,20 @@
         var: program_names
       vars:
         program_names: "{{ result.records | map(attribute='program') | list }}"
+
+    - name: Generate CICS Prometheus metrics
+      ansible.builtin.copy:
+        dest: "{{ cics_metrics_path }}"
+        mode: "0600"
+        vars:
+          program_names: "{{ result.records | map(attribute='program') | list }}"
+        content: |
+          # HELP cics_program_info Static information about CICS programs
+          # TYPE cics_program_info gauge
+          {% for program in program_names %}
+          cics_program_info{program="{{ program }}"} 1
+          {% endfor %}
+
+          # HELP cics_program_total Number of CICS programs
+          # TYPE cics_program_total gauge
+          cics_program_total {{ program_names | length }}
