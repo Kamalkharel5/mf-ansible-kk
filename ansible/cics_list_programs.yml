@@ -11,6 +11,7 @@
       - release
       - jobid
       - totltasks
+    cics_metrics_path: "{{ playbook_dir }}/cics_metrics.prom"
 
   tasks:
     # Install module dependencies
