@@ -1,0 +1,69 @@
+---
+- name: Demo Scenario - Verify DEV and TEST libraries on z/OS
+  hosts: zos
+  gather_facts: false
+
+  environment: "{{ environment_vars }}"
+
+  vars:
+    user_hlqs:
+      - USER01
+      - USER02
+      - USER03
+
+    environments:
+      - DEV
+      - TEST
+
+    libraries: "{{ user_hlqs | product(environments) | list }}"
+
+  tasks:
+    - name: Initialize library provisioning Prometheus metrics
+      ansible.builtin.copy:
+        dest: "{{ playbook_dir }}/job_metrics.prom"
+        mode: "0644"
+        content: |
+          # HELP zos_library_playbook_success Whether library provisioning and verification succeeded
+          # TYPE zos_library_playbook_success gauge
+          zos_library_playbook_success 0
+      delegate_to: localhost
+      run_once: true
+
+    - name: Verify DEV and TEST libraries with LISTCAT
+      ibm.ibm_zos_core.zos_tso_command:
+        commands:
+          - LISTCAT ENTRIES('{{ item.0 }}.{{ item.1 }}.JCL')
+        max_rc: 8
+      loop: "{{ libraries }}"
+      loop_control:
+        label: "{{ item.0 }}.{{ item.1 }}.JCL"
+      register: verify_results
+      changed_when: false
+      failed_when: false
+      throttle: 1
+
+    - name: Assert that every DEV and TEST library exists
+      ansible.builtin.assert:
+        that:
+          - item.output is defined
+          - item.output | length > 0
+          - item.output[0].rc is defined
+          - item.output[0].rc | int == 99  # <--- SET TO 99 FOR DEMO FAILURE! (Change to 0 to fix)
+        fail_msg: >-
+          Verification failed: library {{ item.item.0 }}.{{ item.item.1 }}.JCL was not found by LISTCAT.
+        success_msg: >-
+          Verification passed: library {{ item.item.0 }}.{{ item.item.1 }}.JCL exists.
+      loop: "{{ verify_results.results }}"
+      loop_control:
+        label: "{{ item.0 }}.{{ item.1 }}.JCL"
+
+    - name: Write successful library provisioning Prometheus metrics
+      ansible.builtin.copy:
+        dest: "{{ playbook_dir }}/job_metrics.prom"
+        mode: "0644"
+        content: |
+          # HELP zos_library_playbook_success Whether library provisioning and verification succeeded
+          # TYPE zos_library_playbook_success gauge
+          zos_library_playbook_success 1
+      delegate_to: localhost
+      run_once: true
