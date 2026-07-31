@@ -1,3 +1,4 @@
 job_metrics.prom
+*.prom
 report.csv
 cics_metrics.prom
