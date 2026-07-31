@@ -1,0 +1,183 @@
+---
+- name: Generate CICS CMCI report
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  collections:
+    - ibm.ibm_zos_cics
+
+  vars:
+    cmci_host: "173.45.66.189"
+    cmci_port: 1490
+    cmci_scheme: "http"
+
+    cmci_context: ""
+    cmci_user: ""
+    cmci_password: ""
+
+    report_template: "{{ playbook_dir }}/csv.j2"
+    report_path: "{{ playbook_dir }}/report.csv"
+    cics_metrics_path: "{{ playbook_dir }}/cics_metrics.prom"
+
+    attributes:
+      - eyu_cicsname
+      - release
+      - jobid
+      - totltasks
+
+  tasks:
+    - name: Validate CMCI connection settings
+      ansible.builtin.assert:
+        that:
+          - cmci_host | length > 0
+          - cmci_port | int > 0
+          - cmci_scheme in ["http", "https"]
+        fail_msg: "The CMCI host, port, or scheme is invalid."
+        success_msg: >-
+          CMCI connection settings validated for
+          {{ cmci_scheme }}://{{ cmci_host }}:{{ cmci_port }}.
+
+    - name: Check whether the CSV template exists
+      ansible.builtin.stat:
+        path: "{{ report_template }}"
+      register: csv_template
+
+    - name: Validate CSV template
+      ansible.builtin.assert:
+        that:
+          - csv_template.stat.exists
+          - csv_template.stat.isreg
+        fail_msg: "CSV template was not found at {{ report_template }}."
+        success_msg: "CSV template found at {{ report_template }}."
+
+    - name: Check whether the CMCI port is reachable
+      ansible.builtin.wait_for:
+        host: "{{ cmci_host }}"
+        port: "{{ cmci_port | int }}"
+        state: started
+        timeout: 20
+        connect_timeout: 5
+      changed_when: false
+
+    - name: Ensure CMCI Python dependencies are installed
+      ansible.builtin.pip:
+        name:
+          - requests
+          - xmltodict
+        state: present
+
+    - name: Retrieve information about CICS regions
+      ibm.ibm_zos_cics.cmci_get:
+        cmci_host: "{{ cmci_host }}"
+        cmci_port: "{{ cmci_port | int }}"
+        scheme: "{{ cmci_scheme }}"
+        context: "{{ cmci_context }}"
+        cmci_user: >-
+          {{ cmci_user if cmci_user | length > 0 else omit }}
+        cmci_password: >-
+          {{ cmci_password if cmci_password | length > 0 else omit }}
+        type: "CICSRegion"
+      register: result
+      no_log: "{{ cmci_password | length > 0 }}"
+
+    - name: Validate returned CICS records
+      ansible.builtin.assert:
+        that:
+          - result.records is defined
+          - result.records | length > 0
+        fail_msg: "The CMCI request succeeded but returned no CICS region records."
+        success_msg: >-
+          CMCI returned {{ result.records | length }} CICS region record(s).
+
+    - name: Display CMCI request summary
+      ansible.builtin.debug:
+        msg:
+          - "CMCI request completed successfully."
+          - "Endpoint: {{ cmci_scheme }}://{{ cmci_host }}:{{ cmci_port }}"
+          - "Resource type: CICSRegion"
+          - "Records returned: {{ result.records | length }}"
+          - "Context supplied: {{ cmci_context | length > 0 }}"
+          - "Authentication supplied: {{ cmci_user | length > 0 }}"
+
+    - name: Create CSV report from template
+      ansible.builtin.template:
+        src: "{{ report_template }}"
+        dest: "{{ report_path }}"
+        mode: "0600"
+
+    - name: Generate CICS Prometheus metrics
+      ansible.builtin.copy:
+        dest: "{{ cics_metrics_path }}"
+        mode: "0600"
+        content: |
+          # HELP cics_region_info Static information about a CICS region
+          # TYPE cics_region_info gauge
+          {% for region in result.records %}
+          cics_region_info{region="{{ region.eyu_cicsname | default('unknown') }}",release="{{ region.release | default('unknown') }}",jobid="{{ region.jobid | default('unknown') }}"} 1
+          {% endfor %}
+
+          # HELP cics_region_total_tasks Total number of tasks reported by a CICS region
+          # TYPE cics_region_total_tasks gauge
+          {% for region in result.records %}
+          cics_region_total_tasks{region="{{ region.eyu_cicsname | default('unknown') }}"} {{ region.totltasks | default(0) | int }}
+          {% endfor %}
+
+          # HELP cics_region_report_record_count Number of CICS region records returned by CMCI
+          # TYPE cics_region_report_record_count gauge
+          cics_region_report_record_count {{ result.records | length }}
+
+    - name: Check generated CSV report
+      ansible.builtin.stat:
+        path: "{{ report_path }}"
+      register: report_file
+
+    - name: Check generated CICS metrics file
+      ansible.builtin.stat:
+        path: "{{ cics_metrics_path }}"
+      register: cics_metrics_file
+
+    - name: Validate generated CSV report
+      ansible.builtin.assert:
+        that:
+          - report_file.stat.exists
+          - report_file.stat.isreg
+          - report_file.stat.size | int > 0
+        fail_msg: "The CICS CMCI report was not generated or is empty."
+        success_msg: >-
+          CICS CMCI report generated successfully at
+          {{ report_path }} with size
+          {{ report_file.stat.size }} bytes.
+
+    - name: Validate generated CICS metrics
+      ansible.builtin.assert:
+        that:
+          - cics_metrics_file.stat.exists
+          - cics_metrics_file.stat.isreg
+          - cics_metrics_file.stat.size | int > 0
+        fail_msg: "The CICS Prometheus metrics file was not generated or is empty."
+        success_msg: >-
+          CICS Prometheus metrics generated successfully at
+          {{ cics_metrics_path }} with size
+          {{ cics_metrics_file.stat.size }} bytes.
+
+    - name: Display generated CICS metrics
+      ansible.builtin.command:
+        cmd: "cat {{ cics_metrics_path }}"
+      register: displayed_cics_metrics
+      changed_when: false
+
+    - name: Show CICS Prometheus metrics
+      ansible.builtin.debug:
+        var: displayed_cics_metrics.stdout_lines
+
+    - name: Display final report summary
+      ansible.builtin.debug:
+        msg:
+          - "CICS CMCI reporting: PASS"
+          - "CMCI endpoint: {{ cmci_scheme }}://{{ cmci_host }}:{{ cmci_port }}"
+          - "Records returned: {{ result.records | length }}"
+          - "CSV report: {{ report_path }}"
+          - "CSV report size: {{ report_file.stat.size }} bytes"
+          - "Prometheus metrics: {{ cics_metrics_path }}"
+          - "Metrics file size: {{ cics_metrics_file.stat.size }} bytes"
