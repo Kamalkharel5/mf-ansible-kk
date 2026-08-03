@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: 'plan or apply'
+        description: "Terraform action"
         required: true
-        default: 'plan'
+        default: "plan"
         type: choice
         options:
           - plan
@@ -30,14 +30,17 @@ jobs:
   terraform:
     name: Terraform ${{ inputs.action }}
     runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: terraform
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: hashicorp/setup-terraform@v3
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "~1.5"
 
@@ -48,17 +51,30 @@ jobs:
             -backend-config="region=${{ secrets.AWS_DEFAULT_REGION }}"
 
       - name: Terraform Format Check
-        run: terraform fmt -check
+        run: terraform fmt -check -recursive
 
       - name: Terraform Validate
         run: terraform validate
 
       - name: Terraform Plan
+        if: inputs.action == 'plan'
         run: terraform plan -input=false -no-color
+
+      - name: Terraform Apply Plan
+        if: inputs.action == 'apply'
+        run: terraform plan -input=false -no-color -out=tfplan
 
       - name: Terraform Apply
         if: inputs.action == 'apply'
-        run: terraform apply -input=false -auto-approve
+        run: terraform apply -input=false -auto-approve tfplan
+
+      - name: Terraform Outputs
+        if: inputs.action == 'apply'
+        run: terraform output -no-color
+
+      - name: Terraform Destroy Plan
+        if: inputs.action == 'destroy'
+        run: terraform plan -destroy -input=false -no-color
 
       - name: Terraform Destroy
         if: inputs.action == 'destroy'
