@@ -1,6 +1,12 @@
 name: Terraform
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - '**.tf'
+      - '**.tfvars'
   workflow_dispatch:
     inputs:
       action:
@@ -23,6 +29,7 @@ env:
   TF_VAR_project_tag: "monitoring"
   TF_VAR_frontend_role_tag: "frontend"
   TF_VAR_backend_role_tag: "backend"
+  TF_ACTION: ${{ github.event.inputs.action || 'plan' }}
 
   TF_INPUT: "false"
 
