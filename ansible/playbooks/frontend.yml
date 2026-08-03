@@ -38,7 +38,7 @@
 
     - name: Copy dashboard provider configuration
       ansible.builtin.copy:
-        src: ../grafana/provisioning/dashboards/dashboards.yml
+        src: grafana/provisioning/dashboards/dashboards.yml
         dest: /opt/grafana/provisioning/dashboards/dashboards.yml
         owner: root
         group: root
@@ -47,7 +47,7 @@
 
     - name: Copy Prometheus datasource configuration
       ansible.builtin.template:
-        src: ../grafana/provisioning/datasources/prometheus.yml.j2
+        src: grafana/provisioning/datasources/prometheus.yml.j2
         dest: /opt/grafana/provisioning/datasources/prometheus.yml
         owner: root
         group: root
@@ -60,7 +60,7 @@
 
     - name: Copy Grafana dashboards
       ansible.builtin.copy:
-        src: ../grafana/dashboards/
+        src: grafana/dashboards/
         dest: /opt/grafana/dashboards/
         owner: root
         group: root
