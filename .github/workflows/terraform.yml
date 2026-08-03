@@ -37,6 +37,8 @@ jobs:
   terraform:
     name: Terraform ${{ inputs.action }}
     runs-on: ubuntu-latest
+    outputs:
+      action: ${{ env.TF_ACTION }}
 
     defaults:
       run:
@@ -86,3 +88,12 @@ jobs:
       - name: Terraform Destroy
         if: env.TF_ACTION == 'destroy'
         run: terraform destroy -input=false -auto-approve
+      
+      - name: Trigger Ansible Deploy
+        if: env.TF_ACTION == 'apply'
+        run: |
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/${{ github.repository }}/dispatches \
+            -d '{"event_type":"terraform-applied"}
