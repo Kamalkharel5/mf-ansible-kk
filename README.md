@@ -74,16 +74,43 @@ Every change is validated through GitHub Actions before deployment, providing a 
 mf-ansible/
 ├── .github/
 │   └── workflows/
+│       ├── ansible.yml
 │       ├── lint.yml
-│       └── run-ansible-mainframe.yml
+│       ├── run-ansible-mainframe.yml
+│       └── terraform.yml
 │
 ├── ansible/
+│   ├── files/
+│   │   └── grafana/
+│   │       ├── dashboards/
+│   │       │   ├── capstone-dashboard.json
+│   │       │   ├── library-provisioning.json
+│   │       │   └── racf-provisioning.json
+│   │       ├── provisioning/
+│   │       │   └── dashboards/
+│   │       │       └── dashboards.yml
+│   │       └── datasources/
+│   │           └── prometheus.yml.j2
 │   ├── group_vars/
 │   │   └── all.yml
+│   ├── inventory/
+│   │   ├── group_vars/
+│   │   │   ├── backend.yml
+│   │   │   └── frontend.yml
+│   │   └── aws_ec2.yml
 │   ├── jcl/
 │   │   ├── hello_world.jcl
 │   │   ├── racf_groups_users.jcl
 │   │   └── sql_query.jcl
+│   ├── playbooks/
+│   │   ├── backend.yml
+│   │   ├── endpoints.yml
+│   │   ├── frontend.yml
+│   │   ├── install_docker.yml
+│   │   └── site.yml
+│   ├── templates/
+│   │   ├── prometheus.yml.j2
+│   │   └── promtail-config.yml.j2
 │   ├── .gitignore
 │   ├── ansible.cfg
 │   ├── cics_list_programs.yml
@@ -100,10 +127,20 @@ mf-ansible/
 │   ├── run_jcl.yml
 │   └── verify_end_to_end.yml
 │
+├── terraform/
+│   ├── ec2.tf
+│   ├── main.tf
+│   ├── outputs.tf
+│   ├── security_groups.tf
+│   ├── terraform.tfvars.example
+│   ├── variables.tf
+│   └── vpc.tf
+│
 ├── .ansible-lint
 ├── .gitignore
 ├── Dockerfile
 ├── Grafana-Example-Queries.md
+├── Makefile
 └── README.md
 ```
 
