@@ -2,8 +2,8 @@ name: Ansible Deploy
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*'
     paths:
       - 'ansible/**'
   workflow_dispatch:
