@@ -1,6 +1,11 @@
 name: Ansible Deploy
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'ansible/**'
   workflow_dispatch:
 
 env:
