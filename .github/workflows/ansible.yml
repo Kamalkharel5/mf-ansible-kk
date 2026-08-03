@@ -1,8 +1,7 @@
 name: Ansible Deploy
 
 on:
-  repository_dispatch:
-    types: [terraform-applied]
+  workflow_call:
   workflow_dispatch:
 
 env:
