@@ -2,3 +2,15 @@ job_metrics.prom
 *.prom
 report.csv
 cics_metrics.prom
+# Terraform
+terraform/.terraform/
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/.terraform.lock.hcl
+terraform/terraform.tfvars
+
+# Ansible
+ansible/.keys/
+
+# OS
+.DS_Store
