@@ -8,14 +8,6 @@
     - ibm.ibm_zos_cics
 
   vars:
-    cmci_host: "173.45.66.189"
-    cmci_port: 1490
-    cmci_scheme: "http"
-
-    cmci_context: ""
-    cmci_user: ""
-    cmci_password: ""
-
     report_template: "{{ playbook_dir }}/csv.j2"
     report_path: "{{ playbook_dir }}/report.csv"
     cics_metrics_path: "{{ playbook_dir }}/cics_metrics.prom"
