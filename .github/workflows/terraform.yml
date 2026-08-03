@@ -19,6 +19,7 @@ on:
           - apply
           - destroy
 
+
 env:
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -37,6 +38,8 @@ jobs:
   terraform:
     name: Terraform ${{ inputs.action }}
     runs-on: ubuntu-latest
+    outputs:
+      action: ${{ env.TF_ACTION }}
 
     defaults:
       run:
@@ -86,3 +89,10 @@ jobs:
       - name: Terraform Destroy
         if: env.TF_ACTION == 'destroy'
         run: terraform destroy -input=false -auto-approve
+      
+  ansible:
+      name: Trigger Ansible Deploy
+      needs: terraform
+      if: needs.terraform.outputs.action == 'apply'
+      uses: ./.github/workflows/ansible.yml
+      secrets: inherit      

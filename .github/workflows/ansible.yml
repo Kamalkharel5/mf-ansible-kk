@@ -1,11 +1,7 @@
 name: Ansible Deploy
 
 on:
-  push:
-    tags:
-      - 'v*'
-    paths:
-      - 'ansible/**'
+  workflow_call:
   workflow_dispatch:
 
 env:
@@ -17,7 +13,6 @@ jobs:
   deploy:
     name: Deploy monitoring stack
     runs-on: ubuntu-latest
-
     defaults:
       run:
         working-directory: ansible
