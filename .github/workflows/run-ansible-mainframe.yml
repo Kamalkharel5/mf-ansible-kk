@@ -89,6 +89,9 @@ jobs:
           STUDENT_ID: ${{ inputs.STUDENT_ID }}
           JCL_FILE: ${{ inputs.JCL_FILE }}
 
+          CMCI_USER: ${{ secrets.CMCI_USER }}
+          CMCI_PASSWORD: ${{ secrets.CMCI_PASSWORD }}
+
           RACF_DEFAULT_PASSWORD: ${{ secrets.RACF_DEFAULT_PASSWORD }}
           PUSHGATEWAY_URL: ${{ secrets.PUSHGATEWAY_URL }}
 
