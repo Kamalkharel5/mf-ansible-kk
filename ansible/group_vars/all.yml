@@ -19,5 +19,5 @@ cmci_port: 1490
 cmci_scheme: "http"
 
 cmci_context: ""
-cmci_user: ""
-cmci_password: ""
+cmci_user: "{{ secrets.CMCI_USER }}"
+cmci_password: "{{ secrets.CMCI_PASSWORD }}"
