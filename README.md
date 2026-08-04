@@ -80,17 +80,6 @@ mf-ansible/
 │       └── terraform.yml
 │
 ├── ansible/
-│   ├── files/
-│   │   └── grafana/
-│   │       ├── dashboards/
-│   │       │   ├── capstone-dashboard.json
-│   │       │   ├── library-provisioning.json
-│   │       │   └── racf-provisioning.json
-│   │       ├── provisioning/
-│   │       │   └── dashboards/
-│   │       │       └── dashboards.yml
-│   │       └── datasources/
-│   │           └── prometheus.yml.j2
 │   ├── group_vars/
 │   │   └── all.yml
 │   ├── inventory/
@@ -103,18 +92,27 @@ mf-ansible/
 │   │   ├── racf_groups_users.jcl
 │   │   └── sql_query.jcl
 │   ├── playbooks/
+│   │   ├── grafana/
+│   │   │   ├── dashboards/
+│   │   │   │   ├── capstone-dashboard.json
+│   │   │   │   ├── cics-metrics-dashboard.json
+│   │   │   │   ├── library-provisioning.json
+│   │   │   │   └── racf-provisioning.json
+│   │   │   ├── provisioning/
+│   │   │   │   └── dashboards/
+│   │   │   │       └── dashboards.yml
+│   │   │   └── datasources/
+│   │   │       └── prometheus.yml.j2
+│   │   ├── templates/
+│   │   │   ├── prometheus.yml.j2
+│   │   │   └── promtail-config.yml.j2
 │   │   ├── backend.yml
 │   │   ├── endpoints.yml
 │   │   ├── frontend.yml
 │   │   ├── install_docker.yml
 │   │   └── site.yml
-│   ├── templates/
-│   │   ├── prometheus.yml.j2
-│   │   └── promtail-config.yml.j2
-│   ├── .gitignore
 │   ├── ansible.cfg
 │   ├── cics_list_programs.yml
-│   ├── cics_metrics.prom
 │   ├── cics_report.yml
 │   ├── create_dev_test_libraries.yml
 │   ├── create_racf_group_and_users.yml
@@ -126,6 +124,9 @@ mf-ansible/
 │   ├── racf_vars.yml
 │   ├── run_jcl.yml
 │   └── verify_end_to_end.yml
+│
+├── group_vars/
+│   └── all.yml
 │
 ├── terraform/
 │   ├── ec2.tf
